@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Open in Impromptu</title>
+
+  <style>
+    :root {
+      --page-bg: #070522;
+      --page-bg-2: #0c0730;
+
+      --card-bg: rgba(10, 7, 42, 0.72);
+      --card-border: rgba(151, 132, 255, 0.18);
+
+      --text-primary: #f4f2ff;
+      --text-secondary: #aaa3c7;
+      --text-muted: #817a9e;
+
+      --button-bg: #9d82f4;
+      --button-text: #28195d;
+
+      --opa-gold: #e7b74d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--page-bg);
+      color: var(--text-primary);
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "SF Pro Display",
+        "SF Pro Text",
+        system-ui,
+        sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 50% 8%, rgba(75, 63, 164, 0.22), transparent 34%),
+        radial-gradient(circle at 50% 72%, rgba(82, 54, 164, 0.12), transparent 42%),
+        linear-gradient(180deg, #100b3d 0%, var(--page-bg) 58%, #09051f 100%);
+    }
+
+    .page {
+      position: relative;
+      min-height: 100vh;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      padding: 38px 22px;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .page::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);
+      pointer-events: none;
+      z-index: -2;
+    }
+
+    .page::after {
+      content: "";
+      position: absolute;
+      width: 520px;
+      height: 520px;
+      border-radius: 999px;
+      background: rgba(114, 91, 255, 0.08);
+      filter: blur(90px);
+      top: 18%;
+      left: 50%;
+      transform: translateX(-50%);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .shell {
+      width: min(100%, 430px);
+      min-height: calc(100vh - 76px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 56px 24px 58px;
+    }
+
+    .brand-top {
+      margin-bottom: 58px;
+      color: rgba(244, 242, 255, 0.68);
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: 0.42em;
+      text-align: center;
+    }
+
+    .invite-card {
+      width: 100%;
+      max-width: 340px;
+      padding: 38px 32px 34px;
+      border-radius: 28px;
+      background:
+        linear-gradient(180deg, rgba(12, 8, 45, 0.78), rgba(8, 5, 35, 0.84));
+      border: 1px solid var(--card-border);
+      box-shadow:
+        0 24px 54px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035);
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 275px;
+      font-size: 34px;
+      line-height: 1.05;
+      letter-spacing: -0.055em;
+      font-weight: 800;
+      color: var(--text-primary);
+    }
+
+    .subtitle {
+      margin: 22px 0 28px;
+      max-width: 275px;
+      font-size: 19px;
+      line-height: 1.45;
+      letter-spacing: -0.03em;
+      color: var(--text-secondary);
+    }
+
+    .button {
+      width: 100%;
+      min-height: 64px;
+      border: 0;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 13px;
+      padding: 18px 20px;
+      background: var(--button-bg);
+      color: var(--button-text);
+      text-decoration: none;
+      font-size: 19px;
+      line-height: 1;
+      font-weight: 750;
+      letter-spacing: -0.025em;
+      box-shadow:
+        0 8px 18px rgba(25, 12, 77, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      transition:
+        transform 150ms ease,
+        background 150ms ease,
+        box-shadow 150ms ease;
+    }
+
+    .button:active {
+      transform: scale(0.985);
+      background: #9277e8;
+      box-shadow:
+        0 4px 10px rgba(25, 12, 77, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+
+    .button svg {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 auto;
+    }
+
+    .note {
+      margin-top: 28px;
+      width: 100%;
+      padding: 22px 21px;
+      border-radius: 10px;
+      border: 1px solid rgba(151, 132, 255, 0.12);
+      background: rgba(5, 3, 28, 0.2);
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 14px;
+      color: var(--text-muted);
+      font-size: 16px;
+      line-height: 1.45;
+      letter-spacing: -0.02em;
+    }
+
+    .note svg {
+      width: 20px;
+      height: 20px;
+      color: rgba(157, 130, 244, 0.72);
+      margin-top: 1px;
+    }
+
+    .footer {
+      margin-top: auto;
+      padding-top: 84px;
+      text-align: center;
+    }
+
+    .opa-link {
+      position: relative;
+      display: inline-block;
+      color: var(--opa-gold);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-decoration: none;
+      padding: 10px 2px;
+      transition:
+        opacity 150ms ease,
+        transform 150ms ease;
+    }
+
+    .opa-link::after {
+      content: "";
+      position: absolute;
+      left: 2px;
+      right: calc(2px + 0.22em);
+      bottom: 6px;
+      height: 1px;
+      background: currentColor;
+      opacity: 0.24;
+      transform: scaleX(0.42);
+      transform-origin: center;
+      transition:
+        opacity 150ms ease,
+        transform 150ms ease;
+    }
+
+    .opa-link:hover::after,
+    .opa-link:focus-visible::after {
+      opacity: 0.42;
+      transform: scaleX(0.72);
+    }
+
+    .opa-link:active {
+      opacity: 0.78;
+      transform: scale(0.985);
+    }
+
+    .opa-link:focus-visible {
+      outline: 1px solid rgba(231, 183, 77, 0.55);
+      outline-offset: 7px;
+      border-radius: 999px;
+    }
+
+    @media (max-width: 390px) {
+      .page {
+        padding: 0;
+      }
+
+      .shell {
+        width: 100%;
+        min-height: 100vh;
+        padding: 54px 24px 52px;
+      }
+
+      .brand-top {
+        margin-bottom: 56px;
+      }
+
+      .invite-card {
+        max-width: 320px;
+        padding: 36px 30px 32px;
+      }
+
+      h1 {
+        font-size: 33px;
+      }
+
+      .subtitle {
+        font-size: 18px;
+      }
+
+      .footer {
+        padding-top: 74px;
+      }
+    }
+
+    @media (max-width: 340px) {
+      .invite-card {
+        padding: 32px 26px 30px;
+      }
+
+      h1 {
+        font-size: 30px;
+      }
+
+      .subtitle,
+      .button {
+        font-size: 17px;
+      }
+
+      .note {
+        font-size: 15px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page">
+    <section class="shell" aria-label="Impromptu invite landing page">
+      <div class="brand-top">IMPROMPTU</div>
+
+      <div class="invite-card">
+        <h1>You&rsquo;ve been invited to a hangout.</h1>
+
+        <p class="subtitle">
+          Open Impromptu to see the details and join if you&rsquo;d like.
+        </p>
+
+        <a class="button" id="openButton" href="#">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M14 4h6v6M20 4l-9 9"
+              stroke="currentColor"
+              stroke-width="2.15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M11 5H7.2C5.43 5 4 6.43 4 8.2v8.6C4 18.57 5.43 20 7.2 20h8.6c1.77 0 3.2-1.43 3.2-3.2V13"
+              stroke="currentColor"
+              stroke-width="2.15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+
+          <span>Open in Impromptu</span>
+        </a>
+
+        <div class="note">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M12 8v5"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+            <path
+              d="M12 16.8h.01"
+              stroke="currentColor"
+              stroke-width="2.8"
+              stroke-linecap="round"
+            />
+            <circle
+              cx="12"
+              cy="12"
+              r="9"
+              stroke="currentColor"
+              stroke-width="1.8"
+            />
+          </svg>
+
+          <div>
+            If the app doesn&rsquo;t open, make sure Impromptu is installed on your device.
+          </div>
+        </div>
+      </div>
+
+      <footer class="footer">
+        <a class="opa-link" href="/" aria-label="Visit One Part Analog">
+          ONE PART ANALOG
+        </a>
+      </footer>
+    </section>
+  </main>
+
+  <script>
+    /*
+      This keeps the invite information from the web URL and passes it to the app.
+
+      Example:
+      https://onepartanalog.com/impromptu-hangout.html?id=abc123
+
+      Opens:
+      impromptu://hangout?id=abc123
+
+      If your app uses a different URL scheme or path, edit appBaseUrl below.
+    */
+
+    const openButton = document.getElementById("openButton");
+    const appBaseUrl = "impromptu://hangout";
+    const inviteParams = window.location.search || "";
+    const appUrl = `${appBaseUrl}${inviteParams}`;
+
+    openButton.setAttribute("href", appUrl);
+
+    openButton.addEventListener("click", function (event) {
+      event.preventDefault();
+      window.location.href = appUrl;
+    });
+  </script>
+</body>
+</html>
