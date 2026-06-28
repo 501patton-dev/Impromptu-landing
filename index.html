@@ -20,6 +20,8 @@
 
       --button-bg: #9d82f4;
       --button-text: #28195d;
+      --button-secondary-bg: rgba(157, 130, 244, 0.14);
+      --button-secondary-text: #d8cffc;
 
       --opa-gold: #e7b74d;
     }
@@ -140,6 +142,39 @@
       color: var(--text-secondary);
     }
 
+    .details {
+      display: grid;
+      gap: 14px;
+      margin: 0 0 24px;
+      padding: 16px 0 0;
+      border-top: 1px solid rgba(151, 132, 255, 0.14);
+    }
+
+    .preview-detail {
+      display: grid;
+      gap: 4px;
+    }
+
+    .detail-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(244, 242, 255, 0.46);
+    }
+
+    .detail-value {
+      font-size: 16px;
+      line-height: 1.45;
+      color: var(--text-primary);
+    }
+
+    .action-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
     .button {
       width: 100%;
       min-height: 64px;
@@ -164,6 +199,13 @@
         transform 150ms ease,
         background 150ms ease,
         box-shadow 150ms ease;
+      cursor: pointer;
+    }
+
+    .button.secondary {
+      background: var(--button-secondary-bg);
+      color: var(--button-secondary-text);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
     }
 
     .button:active {
@@ -174,10 +216,66 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.12);
     }
 
+    .button.secondary:active {
+      background: rgba(157, 130, 244, 0.18);
+    }
+
+    .button[disabled] {
+      opacity: 0.72;
+      cursor: wait;
+    }
+
     .button svg {
       width: 22px;
       height: 22px;
       flex: 0 0 auto;
+    }
+
+    .join-section {
+      margin-top: 18px;
+      padding: 18px 0 0;
+      border-top: 1px solid rgba(151, 132, 255, 0.14);
+      display: grid;
+      gap: 12px;
+    }
+
+    .join-label {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text-secondary);
+    }
+
+    .join-input {
+      width: 100%;
+      min-height: 52px;
+      border: 1px solid rgba(151, 132, 255, 0.24);
+      border-radius: 12px;
+      padding: 14px 16px;
+      background: rgba(4, 2, 25, 0.5);
+      color: var(--text-primary);
+      font-size: 16px;
+      outline: none;
+    }
+
+    .join-input:focus {
+      border-color: rgba(157, 130, 244, 0.7);
+      box-shadow: 0 0 0 3px rgba(157, 130, 244, 0.16);
+    }
+
+    .join-message {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.45;
+      color: var(--text-muted);
+    }
+
+    .join-message.error {
+      color: #ffb5b5;
+    }
+
+    .join-message.success {
+      color: #d8f4df;
     }
 
     .note {
@@ -316,34 +414,76 @@
       <div class="brand-top">IMPROMPTU</div>
 
       <div class="invite-card">
-        <h1>You&rsquo;ve been invited to a hangout.</h1>
+        <h1 id="previewTitle">You&rsquo;ve been invited to a hangout.</h1>
 
-        <p class="subtitle">
+        <p class="subtitle" id="previewSubtitle">
           Open Impromptu to see the details and join if you&rsquo;d like.
         </p>
 
-        <a class="button" id="openButton" href="#">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M14 4h6v6M20 4l-9 9"
-              stroke="currentColor"
-              stroke-width="2.15"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-            <path
-              d="M11 5H7.2C5.43 5 4 6.43 4 8.2v8.6C4 18.57 5.43 20 7.2 20h8.6c1.77 0 3.2-1.43 3.2-3.2V13"
-              stroke="currentColor"
-              stroke-width="2.15"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
+        <div class="details" id="previewDetails" hidden>
+          <div class="preview-detail">
+            <span class="detail-label">When</span>
+            <div class="detail-value" id="previewTime">—</div>
+          </div>
+          <div class="preview-detail">
+            <span class="detail-label">Where</span>
+            <div class="detail-value" id="previewDestination">—</div>
+          </div>
+        </div>
 
-          <span>Open in Impromptu</span>
-        </a>
+        <div class="action-stack">
+          <a class="button" id="openButton" href="#">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M14 4h6v6M20 4l-9 9"
+                stroke="currentColor"
+                stroke-width="2.15"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M11 5H7.2C5.43 5 4 6.43 4 8.2v8.6C4 18.57 5.43 20 7.2 20h8.6c1.77 0 3.2-1.43 3.2-3.2V13"
+                stroke="currentColor"
+                stroke-width="2.15"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
 
-        <div class="note">
+            <span>Open in Impromptu</span>
+          </a>
+
+          <a class="button secondary" id="mapsButton" href="#" hidden>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M9 4.5 3 6.5v13l6-2 6 2 6-2v-13l-6 2-6-2Z"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linejoin="round"
+              />
+              <path d="M9 4.5v13" stroke="currentColor" stroke-width="1.8" />
+              <path d="M15 6.5v13" stroke="currentColor" stroke-width="1.8" />
+            </svg>
+            <span>Open in Maps</span>
+          </a>
+        </div>
+
+        <div class="join-section" id="joinSection" hidden>
+          <label class="join-label" for="displayNameInput">Display name</label>
+          <input
+            class="join-input"
+            id="displayNameInput"
+            name="displayName"
+            type="text"
+            maxlength="40"
+            autocomplete="nickname"
+            placeholder="Your name"
+          />
+          <button class="button" id="joinButton" type="button">Join</button>
+          <p class="join-message" id="joinMessage" role="status"></p>
+        </div>
+
+        <div class="note" id="inviteNote" role="status">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
               d="M12 8v5"
@@ -366,7 +506,7 @@
             />
           </svg>
 
-          <div>
+          <div id="noteContent">
             If the app doesn&rsquo;t open, make sure Impromptu is installed on your device.
           </div>
         </div>
@@ -374,38 +514,240 @@
 
       <footer class="footer">
         <a class="opa-link" href="https://onepartanalog.com/" aria-label="Visit One Part Analog">
-        One Part Analog
+          One Part Analog
         </a>
       </footer>
     </section>
   </main>
 
-<script>
-  const openButton = document.getElementById("openButton");
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
-  const pathParts = window.location.pathname.split("/").filter(Boolean);
-  const pathHangoutId = pathParts[pathParts.length - 1];
+    const openButton = document.getElementById("openButton");
+    const mapsButton = document.getElementById("mapsButton");
+    const previewTitle = document.getElementById("previewTitle");
+    const previewSubtitle = document.getElementById("previewSubtitle");
+    const previewDetails = document.getElementById("previewDetails");
+    const previewTime = document.getElementById("previewTime");
+    const previewDestination = document.getElementById("previewDestination");
+    const joinSection = document.getElementById("joinSection");
+    const displayNameInput = document.getElementById("displayNameInput");
+    const joinButton = document.getElementById("joinButton");
+    const joinMessage = document.getElementById("joinMessage");
+    const noteContent = document.getElementById("noteContent");
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const queryHangoutId = searchParams.get("id");
+    const pathParts = window.location.pathname.split("/").filter(Boolean);
+    const pathHangoutId = pathParts[pathParts.length - 1];
 
-  const hangoutId = queryHangoutId || pathHangoutId;
+    const searchParams = new URLSearchParams(window.location.search);
+    const queryHangoutId = searchParams.get("id");
+    const inviteToken = searchParams.get("invite");
+    const hangoutId = queryHangoutId || pathHangoutId;
+    const firebaseConfig = window.firebaseConfig || window.IMPROMPTU_FIREBASE_CONFIG || null;
 
-  if (hangoutId && hangoutId !== "hangout") {
-    const appUrl = `impromptu://hangout/${encodeURIComponent(hangoutId)}`;
+    let auth = null;
+    let functions = null;
+    let database = null;
 
-    openButton.setAttribute("href", appUrl);
+    function setNote(message) {
+      noteContent.textContent = message;
+    }
 
-    openButton.addEventListener("click", function (event) {
-      event.preventDefault();
-      window.location.href = appUrl;
+    function setJoinMessage(message, isError = false) {
+      joinMessage.textContent = message;
+      joinMessage.classList.toggle("error", isError);
+      joinMessage.classList.toggle("success", !isError && message.length > 0);
+    }
+
+    function setOpenAppLink() {
+      if (hangoutId && hangoutId !== "hangout") {
+        const appUrl = `impromptu://hangout/${encodeURIComponent(hangoutId)}`;
+
+        openButton.setAttribute("href", appUrl);
+        openButton.addEventListener("click", function (event) {
+          event.preventDefault();
+          window.location.href = appUrl;
+        });
+      } else {
+        openButton.textContent = "Invite link missing";
+        openButton.classList.add("disabled");
+        openButton.setAttribute("aria-disabled", "true");
+        openButton.removeAttribute("href");
+      }
+    }
+
+    function formatTime(value) {
+      if (!value) {
+        return "";
+      }
+
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleString([], {
+          dateStyle: "medium",
+          timeStyle: "short"
+        });
+      }
+
+      return String(value);
+    }
+
+    function canJoinPreview(preview) {
+      if (!hangoutId || !inviteToken || hangoutId === "hangout") {
+        return false;
+      }
+
+      if (!preview) {
+        return false;
+      }
+
+      if (preview.active === false || preview.isActive === false) {
+        return false;
+      }
+
+      if (preview.status === "inactive" || preview.status === "ended") {
+        return false;
+      }
+
+      return true;
+    }
+
+    function renderPreview(preview) {
+      const title = preview.title || preview.name || preview.hangoutTitle || "A hangout";
+      const subtitle = preview.subtitle || "Open Impromptu to see the details and join if you’d like.";
+      const timeValue = preview.time || preview.startsAt || preview.scheduledAt || preview.when || preview.displayTime;
+      const destinationValue = preview.destination || preview.location || preview.place || preview.where || "";
+
+      previewTitle.textContent = title;
+      previewSubtitle.textContent = subtitle;
+      document.title = title;
+
+      if (timeValue || destinationValue) {
+        previewDetails.hidden = false;
+        previewTime.textContent = timeValue ? formatTime(timeValue) : "—";
+        previewDestination.textContent = destinationValue || "—";
+      } else {
+        previewDetails.hidden = true;
+      }
+
+      if (destinationValue) {
+        const mapsUrl = `https://maps.apple.com/?q=${encodeURIComponent(destinationValue)}`;
+        mapsButton.hidden = false;
+        mapsButton.setAttribute("href", mapsUrl);
+        mapsButton.addEventListener("click", function (event) {
+          event.preventDefault();
+          window.location.href = mapsUrl;
+        });
+      } else {
+        mapsButton.hidden = true;
+      }
+
+      if (canJoinPreview(preview)) {
+        joinSection.hidden = false;
+        setNote("Enter your display name to join this hangout from your browser.");
+        setJoinMessage("");
+      } else {
+        joinSection.hidden = true;
+        if (inviteToken) {
+          setNote("Browser joining isn’t available for this invite yet.");
+        } else {
+          setNote("This link doesn’t include a join token, so browser joining isn’t available here.");
+        }
+      }
+    }
+
+    function showJoinedState() {
+      joinSection.hidden = true;
+      joinMessage.textContent = "";
+      setNote("You’ve joined. You can open Impromptu, or keep this page open for browser status updates coming next.");
+      joinMessage.className = "join-message success";
+    }
+
+    async function loadPreview() {
+      if (!firebaseConfig || !hangoutId || hangoutId === "hangout") {
+        if (!inviteToken) {
+          setNote("This invite link is missing the information needed for browser joining.");
+        }
+        return null;
+      }
+
+      try {
+        const app = initializeApp(firebaseConfig);
+        database = getDatabase(app);
+        auth = getAuth(app);
+        functions = getFunctions(app, "us-central1");
+
+        const previewSnapshot = await get(ref(database, `hangoutPreviews/${hangoutId}`));
+        if (previewSnapshot.exists()) {
+          const preview = previewSnapshot.val();
+          renderPreview(preview);
+          return preview;
+        }
+
+        previewTitle.textContent = "The invite preview is unavailable.";
+        previewSubtitle.textContent = "Open Impromptu to continue.";
+        previewDetails.hidden = true;
+        mapsButton.hidden = true;
+        joinSection.hidden = true;
+        setNote("We couldn’t load the invite preview right now.");
+        return null;
+      } catch (error) {
+        previewTitle.textContent = "The invite preview is unavailable.";
+        previewSubtitle.textContent = "Open Impromptu to continue.";
+        previewDetails.hidden = true;
+        mapsButton.hidden = true;
+        joinSection.hidden = true;
+        setNote("We couldn’t load the invite preview right now.");
+        return null;
+      }
+    }
+
+    joinButton.addEventListener("click", async function () {
+      const displayName = displayNameInput.value.trim();
+      if (displayName.length < 1 || displayName.length > 40) {
+        setJoinMessage("Please enter a display name between 1 and 40 characters.", true);
+        return;
+      }
+
+      if (!auth || !functions) {
+        setJoinMessage("Joining is unavailable right now.", true);
+        return;
+      }
+
+      joinButton.disabled = true;
+      joinButton.textContent = "Joining...";
+      setJoinMessage("Joining this hangout...");
+
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+
+        const joinHangout = httpsCallable(functions, "joinHangout");
+        const result = await joinHangout({
+          hangoutId,
+          inviteToken,
+          displayName
+        });
+
+        if (result?.data?.ok) {
+          showJoinedState();
+        } else {
+          throw new Error("Join failed");
+        }
+      } catch (error) {
+        setJoinMessage("Couldn’t join this hangout. The invite may have expired or already been used.", true);
+      } finally {
+        joinButton.disabled = false;
+        joinButton.textContent = "Join";
+      }
     });
-  } else {
-    openButton.textContent = "Invite link missing";
-    openButton.classList.add("disabled");
-    openButton.setAttribute("aria-disabled", "true");
-    openButton.removeAttribute("href");
-  }
-</script>
+
+    setOpenAppLink();
+    loadPreview();
+  </script>
 </body>
 </html>
