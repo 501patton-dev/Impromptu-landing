@@ -316,10 +316,10 @@
       <div class="brand-top">IMPROMPTU</div>
 
       <div class="invite-card">
-        <h1>You&rsquo;ve been invited to a hangout.</h1>
+        <h1 id="inviteTitle">You&rsquo;ve been invited to a hangout.</h1>
 
         <p class="subtitle">
-          Open Impromptu to see the details and join if you&rsquo;d like.
+          Here are the details shared with this invite.
         </p>
 
         <a class="button" id="openButton" href="#">
@@ -381,7 +381,26 @@
   </main>
 
 <script>
+  const inviteTitle = document.getElementById("inviteTitle");
   const openButton = document.getElementById("openButton");
+
+  function getInviteTitle(preview) {
+    const organizerDisplayName = preview.organizerDisplayName;
+    const activityDisplayName = preview.activityDisplayName;
+    const activityInvitePhrase = preview.activityInvitePhrase;
+
+    if (activityInvitePhrase) {
+      if (organizerDisplayName) {
+        return `${organizerDisplayName} is inviting you ${activityInvitePhrase}`;
+      }
+
+      return `You\u2019re invited ${activityInvitePhrase}`;
+    }
+
+    return activityDisplayName || preview.activity || "You\u2019ve been invited to a hangout.";
+  }
+
+  inviteTitle.textContent = getInviteTitle({});
 
   const pathParts = window.location.pathname.split("/").filter(Boolean);
   const pathHangoutId = pathParts[pathParts.length - 1];
