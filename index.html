@@ -380,23 +380,19 @@
     </section>
   </main>
 
-  <script>
-    /*
-      This keeps the invite information from the web URL and passes it to the app.
+<script>
+  const openButton = document.getElementById("openButton");
 
-      Example:
-      https://onepartanalog.com/impromptu-hangout.html?id=abc123
+  const pathParts = window.location.pathname.split("/").filter(Boolean);
+  const pathHangoutId = pathParts[pathParts.length - 1];
 
-      Opens:
-      impromptu://hangout?id=abc123
+  const searchParams = new URLSearchParams(window.location.search);
+  const queryHangoutId = searchParams.get("id");
 
-      If your app uses a different URL scheme or path, edit appBaseUrl below.
-    */
+  const hangoutId = queryHangoutId || pathHangoutId;
 
-    const openButton = document.getElementById("openButton");
-    const appBaseUrl = "impromptu://hangout";
-    const inviteParams = window.location.search || "";
-    const appUrl = `${appBaseUrl}${inviteParams}`;
+  if (hangoutId && hangoutId !== "hangout") {
+    const appUrl = `impromptu://hangout/${encodeURIComponent(hangoutId)}`;
 
     openButton.setAttribute("href", appUrl);
 
@@ -404,6 +400,12 @@
       event.preventDefault();
       window.location.href = appUrl;
     });
-  </script>
+  } else {
+    openButton.textContent = "Invite link missing";
+    openButton.classList.add("disabled");
+    openButton.setAttribute("aria-disabled", "true");
+    openButton.removeAttribute("href");
+  }
+</script>
 </body>
 </html>
