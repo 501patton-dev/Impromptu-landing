@@ -180,6 +180,55 @@
       flex: 0 0 auto;
     }
 
+    .button.secondary {
+      margin-top: 14px;
+      background: rgba(157, 130, 244, 0.12);
+      color: var(--text-primary);
+      border: 1px solid rgba(151, 132, 255, 0.18);
+      box-shadow: none;
+    }
+
+    .button.disabled {
+      pointer-events: none;
+      opacity: 0.58;
+    }
+
+    .details {
+      display: grid;
+      gap: 16px;
+      margin: 0 0 26px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .detail {
+      display: grid;
+      gap: 4px;
+    }
+
+    .detail-label {
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .detail-value {
+      color: var(--text-primary);
+      font-size: 17px;
+      line-height: 1.35;
+      letter-spacing: -0.02em;
+    }
+
+    .detail-value.muted {
+      color: var(--text-secondary);
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
     .note {
       margin-top: 28px;
       width: 100%;
@@ -316,11 +365,32 @@
       <div class="brand-top">IMPROMPTU</div>
 
       <div class="invite-card">
-        <h1 id="inviteTitle">You&rsquo;ve been invited to a hangout.</h1>
+        <h1 id="inviteTitle">Loading invite...</h1>
 
-        <p class="subtitle">
+        <p class="subtitle" id="subtitle">
           Here are the details shared with this invite.
         </p>
+
+        <ul class="details" id="details" hidden>
+          <li class="detail" id="timeDetail" hidden>
+            <span class="detail-label">Time</span>
+            <span class="detail-value" id="startTime"></span>
+          </li>
+
+          <li class="detail" id="locationNameDetail" hidden>
+            <span class="detail-label">Location</span>
+            <span class="detail-value" id="locationName"></span>
+          </li>
+
+          <li class="detail" id="locationAddressDetail" hidden>
+            <span class="detail-label">Address</span>
+            <span class="detail-value muted" id="locationAddress"></span>
+          </li>
+        </ul>
+
+        <a class="button secondary" id="mapsButton" href="#" target="_blank" rel="noopener" hidden>
+          <span>Open in Maps</span>
+        </a>
 
         <a class="button" id="openButton" href="#">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -343,7 +413,7 @@
           <span>Open in Impromptu</span>
         </a>
 
-        <div class="note">
+        <div class="note" id="browserNote">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
               d="M12 8v5"
@@ -367,7 +437,7 @@
           </svg>
 
           <div>
-            If the app doesn&rsquo;t open, make sure Impromptu is installed on your device.
+            Browser joining is coming soon.
           </div>
         </div>
       </div>
@@ -380,8 +450,36 @@
     </section>
   </main>
 
-<script>
-  const inviteTitle = document.getElementById("inviteTitle");
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  import {
+    getFirestore,
+    doc,
+    getDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "impromptu-public-web-api-key",
+    authDomain: "impromptu.firebaseapp.com",
+    projectId: "impromptu",
+    storageBucket: "impromptu.appspot.com",
+    messagingSenderId: "000000000000",
+    appId: "1:000000000000:web:impromptu"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const title = document.getElementById("inviteTitle");
+  const subtitle = document.getElementById("subtitle");
+  const details = document.getElementById("details");
+  const timeDetail = document.getElementById("timeDetail");
+  const startTime = document.getElementById("startTime");
+  const locationNameDetail = document.getElementById("locationNameDetail");
+  const locationName = document.getElementById("locationName");
+  const locationAddressDetail = document.getElementById("locationAddressDetail");
+  const locationAddress = document.getElementById("locationAddress");
+  const mapsButton = document.getElementById("mapsButton");
   const openButton = document.getElementById("openButton");
 
   function getInviteTitle(preview) {
@@ -400,31 +498,184 @@
     return activityDisplayName || preview.activity || "You\u2019ve been invited to a hangout.";
   }
 
-  inviteTitle.textContent = getInviteTitle({});
+  function getHangoutId() {
+    const pathParts = window.location.pathname.split("/").filter(Boolean);
+    const hangoutIndex = pathParts.indexOf("hangout");
 
-  const pathParts = window.location.pathname.split("/").filter(Boolean);
-  const pathHangoutId = pathParts[pathParts.length - 1];
+    if (hangoutIndex >= 0 && pathParts[hangoutIndex + 1]) {
+      return decodeURIComponent(pathParts[hangoutIndex + 1]);
+    }
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const queryHangoutId = searchParams.get("id");
+    const searchParams = new URLSearchParams(window.location.search);
+    return searchParams.get("id") || "";
+  }
 
-  const hangoutId = queryHangoutId || pathHangoutId;
+  function getInviteToken() {
+    const searchParams = new URLSearchParams(window.location.search);
+    return searchParams.get("invite") || "";
+  }
 
-  if (hangoutId && hangoutId !== "hangout") {
+  function getDateValue(value) {
+    if (!value) {
+      return null;
+    }
+
+    if (typeof value.toDate === "function") {
+      return value.toDate();
+    }
+
+    if (typeof value.seconds === "number") {
+      return new Date(value.seconds * 1000);
+    }
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function formatStartTime(value) {
+    const date = getDateValue(value);
+
+    if (!date) {
+      return "";
+    }
+
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    }).format(date);
+  }
+
+  function isPast(value) {
+    const date = getDateValue(value);
+    return Boolean(date && date.getTime() < Date.now());
+  }
+
+  function setOpenButton(hangoutId) {
     const appUrl = `impromptu://hangout/${encodeURIComponent(hangoutId)}`;
 
+    openButton.classList.remove("disabled");
     openButton.setAttribute("href", appUrl);
+    openButton.setAttribute("aria-disabled", "false");
 
     openButton.addEventListener("click", function (event) {
       event.preventDefault();
       window.location.href = appUrl;
     });
-  } else {
-    openButton.textContent = "Invite link missing";
+  }
+
+  function disableOpenButton(label) {
+    openButton.textContent = label;
     openButton.classList.add("disabled");
     openButton.setAttribute("aria-disabled", "true");
     openButton.removeAttribute("href");
   }
+
+  function renderState(state) {
+    details.hidden = true;
+    mapsButton.hidden = true;
+
+    if (state === "loading") {
+      title.textContent = "Loading invite...";
+      subtitle.textContent = "Here are the details shared with this invite.";
+      return;
+    }
+
+    if (state === "expired") {
+      title.textContent = "This invite has expired.";
+      subtitle.textContent = "Ask the organizer to send you a new invite.";
+      return;
+    }
+
+    if (state === "ended") {
+      title.textContent = "This hangout has ended.";
+      subtitle.textContent = "This invite is no longer active.";
+      return;
+    }
+
+    title.textContent = "Invite unavailable.";
+    subtitle.textContent = "This invite could not be found or is no longer available.";
+  }
+
+  function renderMapsLink(preview) {
+    const query = [preview.locationName, preview.locationAddress].filter(Boolean).join(", ");
+
+    if (!query) {
+      mapsButton.hidden = true;
+      mapsButton.removeAttribute("href");
+      return;
+    }
+
+    mapsButton.hidden = false;
+    mapsButton.setAttribute(
+      "href",
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+    );
+  }
+
+  function renderPreview(preview) {
+    title.textContent = getInviteTitle(preview);
+    subtitle.textContent = "Here are the details shared with this invite.";
+
+    const formattedStartTime = formatStartTime(preview.startTime);
+    timeDetail.hidden = !formattedStartTime;
+    startTime.textContent = formattedStartTime;
+
+    locationNameDetail.hidden = !preview.locationName;
+    locationName.textContent = preview.locationName || "";
+
+    locationAddressDetail.hidden = !preview.locationAddress;
+    locationAddress.textContent = preview.locationAddress || "";
+
+    details.hidden = !formattedStartTime && !preview.locationName && !preview.locationAddress;
+    renderMapsLink(preview);
+  }
+
+  async function loadPreview() {
+    renderState("loading");
+
+    const hangoutId = getHangoutId();
+    const inviteToken = getInviteToken();
+    void inviteToken;
+
+    if (!hangoutId) {
+      renderState("unavailable");
+      disableOpenButton("Invite link missing");
+      return;
+    }
+
+    setOpenButton(hangoutId);
+
+    try {
+      const previewRef = doc(db, "hangoutPreviews", hangoutId);
+      const previewSnapshot = await getDoc(previewRef);
+
+      if (!previewSnapshot.exists()) {
+        renderState("unavailable");
+        return;
+      }
+
+      const preview = previewSnapshot.data();
+
+      if (preview.status === "ended" || preview.endedAt || isPast(preview.endTime)) {
+        renderState("ended");
+        return;
+      }
+
+      if (preview.status === "expired" || preview.expiredAt || isPast(preview.expiresAt)) {
+        renderState("expired");
+        return;
+      }
+
+      renderPreview(preview);
+    } catch (error) {
+      renderState("unavailable");
+    }
+  }
+
+  loadPreview();
 </script>
 </body>
 </html>
