@@ -278,6 +278,66 @@
       color: #d8f4df;
     }
 
+    .status-section {
+      margin-top: 18px;
+      padding: 18px 0 0;
+      border-top: 1px solid rgba(151, 132, 255, 0.14);
+      display: grid;
+      gap: 12px;
+    }
+
+    .status-section-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text-secondary);
+    }
+
+    .status-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .status-button {
+      min-height: 50px;
+      border: 1px solid rgba(151, 132, 255, 0.24);
+      border-radius: 12px;
+      padding: 12px 10px;
+      background: rgba(4, 2, 25, 0.5);
+      color: var(--text-primary);
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+    }
+
+    .status-button:active {
+      transform: scale(0.985);
+    }
+
+    .status-button.active {
+      border-color: rgba(157, 130, 244, 0.7);
+      background: rgba(157, 130, 244, 0.18);
+    }
+
+    .status-button[disabled] {
+      opacity: 0.72;
+      cursor: wait;
+    }
+
+    .status-message {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--text-muted);
+    }
+
+    .status-message.error {
+      color: #ffb5b5;
+    }
+
     .debug-status {
       margin: 0;
       font-size: 12px;
@@ -492,6 +552,17 @@
           <p class="debug-status" id="debugStatus" hidden></p>
         </div>
 
+        <div class="status-section" id="statusSection" hidden>
+          <div class="status-section-title">Your status</div>
+          <div class="status-grid">
+            <button class="status-button" type="button" data-status="headedOut">Heading out</button>
+            <button class="status-button" type="button" data-status="close">I’m close</button>
+            <button class="status-button" type="button" data-status="arrived">I arrived</button>
+            <button class="status-button" type="button" data-status="private">Private</button>
+          </div>
+          <p class="status-message" id="statusMessage" role="status"></p>
+        </div>
+
         <div class="note" id="inviteNote" role="status">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
@@ -546,6 +617,9 @@
     const displayNameInput = document.getElementById("displayNameInput");
     const joinButton = document.getElementById("joinButton");
     const joinMessage = document.getElementById("joinMessage");
+    const statusSection = document.getElementById("statusSection");
+    const statusButtons = Array.from(document.querySelectorAll(".status-button"));
+    const statusMessage = document.getElementById("statusMessage");
     const debugStatus = document.getElementById("debugStatus");
     const noteContent = document.getElementById("noteContent");
 
@@ -581,9 +655,22 @@
       joinMessage.classList.toggle("success", !isError && message.length > 0);
     }
 
+    function setStatusMessage(message, isError = false) {
+      statusMessage.textContent = message;
+      statusMessage.classList.toggle("error", isError);
+    }
+
+    function setSelectedStatus(status) {
+      statusButtons.forEach((button) => {
+        const isActive = button.dataset.status === status;
+        button.classList.toggle("active", isActive);
+      });
+    }
+
     function setDebugStatus(code, message) {
       if (!debugModeEnabled) {
         debugStatus.hidden = true;
+      
         debugStatus.textContent = "";
         return;
       }
@@ -756,7 +843,10 @@
     function showJoinedState() {
       joinSection.hidden = true;
       joinMessage.textContent = "";
-      setNote("You’ve joined. You can open Impromptu, or keep this page open for browser status updates coming next.");
+      statusSection.hidden = false;
+      setSelectedStatus("");
+      setStatusMessage("");
+      setNote("You’ve joined. Update your status below, or open Impromptu.");
       joinMessage.className = "join-message success";
     }
 
@@ -846,6 +936,47 @@
         joinButton.disabled = false;
         joinButton.textContent = "Join";
       }
+    });
+
+    statusButtons.forEach((button) => {
+      button.addEventListener("click", async function () {
+        const status = button.dataset.status;
+        if (!auth || !functions || !hangoutId) {
+          setStatusMessage("Couldn’t update your status right now.", true);
+          return;
+        }
+
+        statusButtons.forEach((candidate) => {
+          candidate.disabled = true;
+        });
+        setStatusMessage("Updating your status...");
+
+        try {
+          const updateParticipantStatus = httpsCallable(functions, "updateParticipantStatus");
+          const result = await updateParticipantStatus({
+            hangoutId,
+            status
+          });
+
+          if (result?.data?.ok) {
+            setSelectedStatus(status);
+            setStatusMessage("Status updated.");
+          } else {
+            throw new Error("Status update failed");
+          }
+        } catch (error) {
+          console.error("[join debug] updateParticipantStatus error", {
+            code: error?.code,
+            message: error?.message,
+            details: error?.details
+          });
+          setStatusMessage("Couldn’t update your status right now.", true);
+        } finally {
+          statusButtons.forEach((candidate) => {
+            candidate.disabled = false;
+          });
+        }
+      });
     });
 
     setOpenAppLink();
