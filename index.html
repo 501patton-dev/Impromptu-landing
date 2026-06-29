@@ -208,6 +208,23 @@
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
     }
 
+    .button.primary {
+      min-height: 68px;
+      font-size: 20px;
+      box-shadow:
+        0 12px 22px rgba(25, 12, 77, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+
+    .button.tertiary {
+      min-height: 52px;
+      padding: 14px 16px;
+      font-size: 16px;
+      background: rgba(157, 130, 244, 0.14);
+      color: var(--button-secondary-text);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
     .button:active {
       transform: scale(0.985);
       background: #9277e8;
@@ -276,6 +293,13 @@
 
     .join-message.success {
       color: #d8f4df;
+    }
+
+    .joined-state {
+      margin-top: 14px;
+      padding: 0;
+      display: grid;
+      gap: 8px;
     }
 
     .status-section {
@@ -499,8 +523,53 @@
           </div>
         </div>
 
-        <div class="action-stack">
-          <a class="button" id="openButton" href="#">
+        <div class="join-section" id="joinSection" hidden>
+          <label class="join-label" for="displayNameInput">Display name</label>
+          <input
+            class="join-input"
+            id="displayNameInput"
+            name="displayName"
+            type="text"
+            maxlength="40"
+            autocomplete="nickname"
+            placeholder="Your name"
+          />
+          <button class="button primary" id="joinButton" type="button">Join</button>
+          <p class="join-message" id="joinMessage" role="status"></p>
+          <p class="debug-status" id="debugStatus" hidden></p>
+        </div>
+
+        <div class="joined-state" id="joinedState" hidden>
+          <p class="join-message success">You’ve joined.</p>
+        </div>
+
+        <div class="status-section" id="statusSection" hidden>
+          <div class="status-section-title">Your status</div>
+          <div class="status-grid">
+            <button class="status-button" type="button" data-status="headedOut">Heading out</button>
+            <button class="status-button" type="button" data-status="close">I’m close</button>
+            <button class="status-button" type="button" data-status="arrived">I arrived</button>
+            <button class="status-button" type="button" data-status="private">Private</button>
+          </div>
+          <p class="status-message" id="statusMessage" role="status"></p>
+        </div>
+
+        <div class="action-stack" id="secondaryActions">
+          <a class="button secondary" id="mapsButton" href="#" hidden>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M9 4.5 3 6.5v13l6-2 6 2 6-2v-13l-6 2-6-2Z"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linejoin="round"
+              />
+              <path d="M9 4.5v13" stroke="currentColor" stroke-width="1.8" />
+              <path d="M15 6.5v13" stroke="currentColor" stroke-width="1.8" />
+            </svg>
+            <span>Open in Maps</span>
+          </a>
+
+          <a class="button tertiary" id="openButton" href="#">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path
                 d="M14 4h6v6M20 4l-9 9"
@@ -520,47 +589,6 @@
 
             <span>Open in Impromptu</span>
           </a>
-
-          <a class="button secondary" id="mapsButton" href="#" hidden>
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M9 4.5 3 6.5v13l6-2 6 2 6-2v-13l-6 2-6-2Z"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linejoin="round"
-              />
-              <path d="M9 4.5v13" stroke="currentColor" stroke-width="1.8" />
-              <path d="M15 6.5v13" stroke="currentColor" stroke-width="1.8" />
-            </svg>
-            <span>Open in Maps</span>
-          </a>
-        </div>
-
-        <div class="join-section" id="joinSection" hidden>
-          <label class="join-label" for="displayNameInput">Display name</label>
-          <input
-            class="join-input"
-            id="displayNameInput"
-            name="displayName"
-            type="text"
-            maxlength="40"
-            autocomplete="nickname"
-            placeholder="Your name"
-          />
-          <button class="button" id="joinButton" type="button">Join</button>
-          <p class="join-message" id="joinMessage" role="status"></p>
-          <p class="debug-status" id="debugStatus" hidden></p>
-        </div>
-
-        <div class="status-section" id="statusSection" hidden>
-          <div class="status-section-title">Your status</div>
-          <div class="status-grid">
-            <button class="status-button" type="button" data-status="headedOut">Heading out</button>
-            <button class="status-button" type="button" data-status="close">I’m close</button>
-            <button class="status-button" type="button" data-status="arrived">I arrived</button>
-            <button class="status-button" type="button" data-status="private">Private</button>
-          </div>
-          <p class="status-message" id="statusMessage" role="status"></p>
         </div>
 
         <div class="note" id="inviteNote" role="status">
@@ -614,6 +642,7 @@
     const previewTime = document.getElementById("previewTime");
     const previewDestination = document.getElementById("previewDestination");
     const joinSection = document.getElementById("joinSection");
+    const joinedState = document.getElementById("joinedState");
     const displayNameInput = document.getElementById("displayNameInput");
     const joinButton = document.getElementById("joinButton");
     const joinMessage = document.getElementById("joinMessage");
@@ -758,6 +787,8 @@
       previewDetails.hidden = true;
       mapsButton.hidden = true;
       joinSection.hidden = true;
+      joinedState.hidden = true;
+      statusSection.hidden = true;
       setNote(message);
     }
 
@@ -780,6 +811,8 @@
       previewDetails.hidden = !(formattedStartTime || locationName || locationAddress || statusText || expiresText || coordinates);
       previewTime.textContent = formattedStartTime || "—";
       previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
+      joinedState.hidden = true;
+      statusSection.hidden = true;
 
       if (locationName || locationAddress) {
         const mapsQuery = [locationName, locationAddress].filter(Boolean).join(", ");
@@ -800,6 +833,8 @@
         previewDetails.hidden = true;
         mapsButton.hidden = true;
         joinSection.hidden = true;
+        joinedState.hidden = true;
+        statusSection.hidden = true;
         setNote("This hangout has ended.");
         return;
       }
@@ -810,6 +845,8 @@
         previewDetails.hidden = true;
         mapsButton.hidden = true;
         joinSection.hidden = true;
+        joinedState.hidden = true;
+        statusSection.hidden = true;
         setNote("This invite has expired.");
         return;
       }
@@ -828,10 +865,14 @@
 
       if (canJoin) {
         joinSection.hidden = false;
+        joinedState.hidden = true;
+        statusSection.hidden = true;
         setNote(detailParts.length ? detailParts.join(" • ") : "Enter your display name to join this hangout from your browser.");
         setJoinMessage("");
       } else {
         joinSection.hidden = true;
+        joinedState.hidden = true;
+        statusSection.hidden = true;
         if (!inviteToken) {
           setNote("This link doesn’t include a join token, so browser joining isn’t available here.");
         } else {
@@ -842,8 +883,9 @@
 
     function showJoinedState() {
       joinSection.hidden = true;
-      joinMessage.textContent = "";
+      joinedState.hidden = false;
       statusSection.hidden = false;
+      joinMessage.textContent = "";
       setSelectedStatus("");
       setStatusMessage("");
       setNote("You’ve joined. Update your status below, or open Impromptu.");
