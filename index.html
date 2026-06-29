@@ -508,9 +508,7 @@
       <div class="invite-card">
         <h1 id="previewTitle">You&rsquo;ve been invited to a hangout.</h1>
 
-        <p class="subtitle" id="previewSubtitle">
-          Open Impromptu to see the details and join if you&rsquo;d like.
-        </p>
+        <p class="subtitle" id="previewSubtitle"></p>
 
         <div class="details" id="previewDetails" hidden>
           <div class="preview-detail">
@@ -696,6 +694,12 @@
       });
     }
 
+    function setJoinControlsVisible(isVisible) {
+      joinSection.hidden = !isVisible;
+      displayNameInput.disabled = !isVisible;
+      joinButton.disabled = !isVisible;
+    }
+
     function setDebugStatus(code, message) {
       if (!debugModeEnabled) {
         debugStatus.hidden = true;
@@ -805,7 +809,7 @@
       const expiresText = formatDate(preview.expiresAt || preview.expiration || preview.expires || preview.expiresOn);
 
       previewTitle.textContent = title;
-      previewSubtitle.textContent = "Here are the details shared with this invite.";
+      previewSubtitle.textContent = "";
       document.title = title;
 
       previewDetails.hidden = !(formattedStartTime || locationName || locationAddress || statusText || expiresText || coordinates);
@@ -864,13 +868,13 @@
       }
 
       if (canJoin) {
-        joinSection.hidden = false;
+        setJoinControlsVisible(true);
         joinedState.hidden = true;
         statusSection.hidden = true;
         setNote(detailParts.length ? detailParts.join(" • ") : "Enter your display name to join this hangout from your browser.");
         setJoinMessage("");
       } else {
-        joinSection.hidden = true;
+        setJoinControlsVisible(false);
         joinedState.hidden = true;
         statusSection.hidden = true;
         if (!inviteToken) {
@@ -882,7 +886,7 @@
     }
 
     function showJoinedState() {
-      joinSection.hidden = true;
+      setJoinControlsVisible(false);
       joinedState.hidden = false;
       statusSection.hidden = false;
       joinMessage.textContent = "";
@@ -1021,6 +1025,9 @@
       });
     });
 
+    setJoinControlsVisible(false);
+    joinedState.hidden = true;
+    statusSection.hidden = true;
     setOpenAppLink();
     loadPreview();
   </script>
