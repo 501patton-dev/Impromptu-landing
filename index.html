@@ -530,10 +530,10 @@
   </main>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
     const openButton = document.getElementById("openButton");
     const mapsButton = document.getElementById("mapsButton");
@@ -556,13 +556,20 @@
     const queryHangoutId = searchParams.get("id");
     const inviteToken = searchParams.get("invite");
     const hangoutId = queryHangoutId || pathHangoutId;
-    const firebaseConfig = window.firebaseConfig || window.IMPROMPTU_FIREBASE_CONFIG || null;
+    const firebaseConfig = {
+      apiKey: "impromptu-public-web-api-key",
+      authDomain: "impromptu.firebaseapp.com",
+      projectId: "impromptu-e1ca3",
+      storageBucket: "impromptu.appspot.com",
+      messagingSenderId: "000000000000",
+      appId: "1:000000000000:web:impromptu"
+    };
     const functionsRegion = "us-central1";
     const debugModeEnabled = new URLSearchParams(window.location.search).get("debug") === "1";
 
     let auth = null;
     let functions = null;
-    let database = null;
+    let db = null;
 
     function setNote(message) {
       noteContent.textContent = message;
@@ -602,62 +609,94 @@
       }
     }
 
-    function formatTime(value) {
+    function getDateValue(value) {
       if (!value) {
+        return null;
+      }
+
+      if (typeof value.toDate === "function") {
+        return value.toDate();
+      }
+
+      if (typeof value.seconds === "number") {
+        return new Date(value.seconds * 1000);
+      }
+
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function formatDate(value) {
+      const date = getDateValue(value);
+      if (!date) {
         return "";
       }
 
-      const parsed = new Date(value);
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toLocaleString([], {
-          dateStyle: "medium",
-          timeStyle: "short"
-        });
-      }
-
-      return String(value);
+      return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short"
+      }).format(date);
     }
 
-    function canJoinPreview(preview) {
-      if (!hangoutId || !inviteToken || hangoutId === "hangout") {
-        return false;
+    function getInviteTitle(preview) {
+      const organizerDisplayName = preview.organizerDisplayName || "";
+      const activityInvitePhrase = preview.activityInvitePhrase || "";
+
+      if (activityInvitePhrase) {
+        if (organizerDisplayName) {
+          return `${organizerDisplayName} is inviting you ${activityInvitePhrase}`;
+        }
+
+        return `You’re invited ${activityInvitePhrase}`;
       }
 
-      if (!preview) {
-        return false;
-      }
+      return preview.activityDisplayName || preview.activity || "You’ve been invited to a hangout.";
+    }
 
-      if (preview.active === false || preview.isActive === false) {
-        return false;
-      }
+    function isPreviewEnded(preview) {
+      const endTimeValue = preview.endTime || preview.endsAt || preview.endedAt || preview.endAt;
+      const endTime = getDateValue(endTimeValue);
+      return Boolean(preview.status === "ended" || (endTime && endTime.getTime() < Date.now()));
+    }
 
-      if (preview.status === "inactive" || preview.status === "ended") {
-        return false;
-      }
+    function isPreviewExpired(preview) {
+      const expiresValue = preview.expiresAt || preview.expiration || preview.expires || preview.expiresOn;
+      const expiresAt = getDateValue(expiresValue);
+      return Boolean(preview.status === "expired" || (expiresAt && expiresAt.getTime() < Date.now()));
+    }
 
-      return true;
+    function setPreviewUnavailable(message) {
+      previewTitle.textContent = "The invite preview is unavailable.";
+      previewSubtitle.textContent = "Open Impromptu to continue.";
+      previewDetails.hidden = true;
+      mapsButton.hidden = true;
+      joinSection.hidden = true;
+      setNote(message);
     }
 
     function renderPreview(preview) {
-      const title = preview.title || preview.name || preview.hangoutTitle || "A hangout";
-      const subtitle = preview.subtitle || "Open Impromptu to see the details and join if you’d like.";
-      const timeValue = preview.time || preview.startsAt || preview.scheduledAt || preview.when || preview.displayTime;
-      const destinationValue = preview.destination || preview.location || preview.place || preview.where || "";
+      const title = getInviteTitle(preview);
+      const locationName = preview.locationName || preview.destination || preview.location || "";
+      const locationAddress = preview.locationAddress || preview.address || "";
+      const startTimeValue = preview.startTime || preview.startsAt || preview.start || preview.when || preview.scheduledAt;
+      const formattedStartTime = formatDate(startTimeValue);
+      const coordinates = preview.latitude != null && preview.longitude != null
+        ? `${preview.latitude}, ${preview.longitude}`
+        : "";
+      const statusText = preview.status || "active";
+      const expiresText = formatDate(preview.expiresAt || preview.expiration || preview.expires || preview.expiresOn);
 
       previewTitle.textContent = title;
-      previewSubtitle.textContent = subtitle;
+      previewSubtitle.textContent = "Here are the details shared with this invite.";
       document.title = title;
 
-      if (timeValue || destinationValue) {
-        previewDetails.hidden = false;
-        previewTime.textContent = timeValue ? formatTime(timeValue) : "—";
-        previewDestination.textContent = destinationValue || "—";
-      } else {
-        previewDetails.hidden = true;
-      }
+      previewDetails.hidden = !(formattedStartTime || locationName || locationAddress || statusText || expiresText || coordinates);
+      previewTime.textContent = formattedStartTime || "—";
+      previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
 
-      if (destinationValue) {
-        const mapsUrl = `https://maps.apple.com/?q=${encodeURIComponent(destinationValue)}`;
+      if (locationName || locationAddress) {
+        const mapsQuery = [locationName, locationAddress].filter(Boolean).join(", ");
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
         mapsButton.hidden = false;
         mapsButton.setAttribute("href", mapsUrl);
         mapsButton.addEventListener("click", function (event) {
@@ -668,16 +707,48 @@
         mapsButton.hidden = true;
       }
 
-      if (canJoinPreview(preview)) {
+      if (isPreviewEnded(preview)) {
+        previewTitle.textContent = "This hangout has ended.";
+        previewSubtitle.textContent = "This invite is no longer active.";
+        previewDetails.hidden = true;
+        mapsButton.hidden = true;
+        joinSection.hidden = true;
+        setNote("This hangout has ended.");
+        return;
+      }
+
+      if (isPreviewExpired(preview)) {
+        previewTitle.textContent = "This invite has expired.";
+        previewSubtitle.textContent = "Ask the organizer to send you a new invite.";
+        previewDetails.hidden = true;
+        mapsButton.hidden = true;
+        joinSection.hidden = true;
+        setNote("This invite has expired.");
+        return;
+      }
+
+      const canJoin = preview.status === "active" && !isPreviewExpired(preview) && !isPreviewEnded(preview) && Boolean(inviteToken);
+      const detailParts = [];
+      if (statusText) {
+        detailParts.push(`Status: ${statusText}`);
+      }
+      if (expiresText) {
+        detailParts.push(`Expires: ${expiresText}`);
+      }
+      if (coordinates) {
+        detailParts.push(`Coordinates: ${coordinates}`);
+      }
+
+      if (canJoin) {
         joinSection.hidden = false;
-        setNote("Enter your display name to join this hangout from your browser.");
+        setNote(detailParts.length ? detailParts.join(" • ") : "Enter your display name to join this hangout from your browser.");
         setJoinMessage("");
       } else {
         joinSection.hidden = true;
-        if (inviteToken) {
-          setNote("Browser joining isn’t available for this invite yet.");
-        } else {
+        if (!inviteToken) {
           setNote("This link doesn’t include a join token, so browser joining isn’t available here.");
+        } else {
+          setNote(detailParts.length ? detailParts.join(" • ") : "Browser joining isn’t available for this invite yet.");
         }
       }
     }
@@ -690,45 +761,34 @@
     }
 
     async function loadPreview() {
-      if (!firebaseConfig || !hangoutId || hangoutId === "hangout") {
-        if (!inviteToken) {
-          setNote("This invite link is missing the information needed for browser joining.");
-        }
-        if (!firebaseConfig) {
-          console.error("[join debug] Firebase config missing");
-          setDebugStatus("firebase-config-missing", "Firebase config not found on window.");
-        }
+      if (!hangoutId || hangoutId === "hangout") {
+        setPreviewUnavailable("This invite link is missing the information needed for browser joining.");
         return null;
       }
 
       try {
         const app = initializeApp(firebaseConfig);
-        database = getDatabase(app);
+        db = getFirestore(app);
         auth = getAuth(app);
         functions = getFunctions(app, functionsRegion);
         console.log("[join debug] functions region configured:", functionsRegion);
 
-        const previewSnapshot = await get(ref(database, `hangoutPreviews/${hangoutId}`));
+        const previewSnapshot = await getDoc(doc(db, "hangoutPreviews", hangoutId));
         if (previewSnapshot.exists()) {
-          const preview = previewSnapshot.val();
+          const preview = previewSnapshot.data();
           renderPreview(preview);
           return preview;
         }
 
-        previewTitle.textContent = "The invite preview is unavailable.";
-        previewSubtitle.textContent = "Open Impromptu to continue.";
-        previewDetails.hidden = true;
-        mapsButton.hidden = true;
-        joinSection.hidden = true;
-        setNote("We couldn’t load the invite preview right now.");
+        setPreviewUnavailable("We couldn’t load the invite preview right now.");
         return null;
       } catch (error) {
-        previewTitle.textContent = "The invite preview is unavailable.";
-        previewSubtitle.textContent = "Open Impromptu to continue.";
-        previewDetails.hidden = true;
-        mapsButton.hidden = true;
-        joinSection.hidden = true;
-        setNote("We couldn’t load the invite preview right now.");
+        console.error("[join debug] preview load error", {
+          code: error?.code,
+          message: error?.message,
+          details: error?.details
+        });
+        setPreviewUnavailable("We couldn’t load the invite preview right now.");
         return null;
       }
     }
