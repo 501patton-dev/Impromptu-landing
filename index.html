@@ -278,6 +278,14 @@
       color: #d8f4df;
     }
 
+    .debug-status {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: rgba(244, 242, 255, 0.54);
+      word-break: break-word;
+    }
+
     .note {
       margin-top: 28px;
       width: 100%;
@@ -481,6 +489,7 @@
           />
           <button class="button" id="joinButton" type="button">Join</button>
           <p class="join-message" id="joinMessage" role="status"></p>
+          <p class="debug-status" id="debugStatus" hidden></p>
         </div>
 
         <div class="note" id="inviteNote" role="status">
@@ -537,6 +546,7 @@
     const displayNameInput = document.getElementById("displayNameInput");
     const joinButton = document.getElementById("joinButton");
     const joinMessage = document.getElementById("joinMessage");
+    const debugStatus = document.getElementById("debugStatus");
     const noteContent = document.getElementById("noteContent");
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
@@ -547,6 +557,8 @@
     const inviteToken = searchParams.get("invite");
     const hangoutId = queryHangoutId || pathHangoutId;
     const firebaseConfig = window.firebaseConfig || window.IMPROMPTU_FIREBASE_CONFIG || null;
+    const functionsRegion = "us-central1";
+    const debugModeEnabled = new URLSearchParams(window.location.search).get("debug") === "1";
 
     let auth = null;
     let functions = null;
@@ -560,6 +572,17 @@
       joinMessage.textContent = message;
       joinMessage.classList.toggle("error", isError);
       joinMessage.classList.toggle("success", !isError && message.length > 0);
+    }
+
+    function setDebugStatus(code, message) {
+      if (!debugModeEnabled) {
+        debugStatus.hidden = true;
+        debugStatus.textContent = "";
+        return;
+      }
+
+      debugStatus.hidden = false;
+      debugStatus.textContent = `Debug: ${code}${message ? ` — ${message}` : ""}`;
     }
 
     function setOpenAppLink() {
@@ -671,6 +694,10 @@
         if (!inviteToken) {
           setNote("This invite link is missing the information needed for browser joining.");
         }
+        if (!firebaseConfig) {
+          console.error("[join debug] Firebase config missing");
+          setDebugStatus("firebase-config-missing", "Firebase config not found on window.");
+        }
         return null;
       }
 
@@ -678,7 +705,8 @@
         const app = initializeApp(firebaseConfig);
         database = getDatabase(app);
         auth = getAuth(app);
-        functions = getFunctions(app, "us-central1");
+        functions = getFunctions(app, functionsRegion);
+        console.log("[join debug] functions region configured:", functionsRegion);
 
         const previewSnapshot = await get(ref(database, `hangoutPreviews/${hangoutId}`));
         if (previewSnapshot.exists()) {
@@ -713,7 +741,13 @@
       }
 
       if (!auth || !functions) {
+        console.error("[join debug] join handler unavailable", {
+          code: "auth-or-functions-not-ready",
+          message: "Auth or functions not initialized",
+          details: "auth=" + Boolean(auth) + ", functions=" + Boolean(functions)
+        });
         setJoinMessage("Joining is unavailable right now.", true);
+        setDebugStatus("auth-or-functions-not-ready", "Auth or Functions was not initialized.");
         return;
       }
 
@@ -725,6 +759,8 @@
         if (!auth.currentUser) {
           await signInAnonymously(auth);
         }
+
+        console.log("[join debug] auth.currentUser after signInAnonymously:", Boolean(auth.currentUser));
 
         const joinHangout = httpsCallable(functions, "joinHangout");
         const result = await joinHangout({
@@ -739,7 +775,13 @@
           throw new Error("Join failed");
         }
       } catch (error) {
+        console.error("[join debug] joinHangout error", {
+          code: error?.code,
+          message: error?.message,
+          details: error?.details
+        });
         setJoinMessage("Couldn’t join this hangout. The invite may have expired or already been used.", true);
+        setDebugStatus(error?.code || "join-failed", error?.message || "Join attempt failed.");
       } finally {
         joinButton.disabled = false;
         joinButton.textContent = "Join";
