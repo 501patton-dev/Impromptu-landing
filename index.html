@@ -367,6 +367,60 @@
       color: #ffb5b5;
     }
 
+    .people-section {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(151, 132, 255, 0.14);
+      display: grid;
+      gap: 10px;
+    }
+
+    .people-section-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text-secondary);
+    }
+
+    .people-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .people-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(151, 132, 255, 0.1);
+    }
+
+    .people-row:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .people-name {
+      font-size: 15px;
+      line-height: 1.35;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .people-status {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(157, 130, 244, 0.14);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+
     .debug-status {
       margin: 0;
       font-size: 12px;
@@ -594,6 +648,11 @@
           </a>
         </div>
 
+        <section class="people-section" id="peopleSection" hidden>
+          <div class="people-section-title">People here</div>
+          <div class="people-list" id="peopleList"></div>
+        </section>
+
         <div class="note" id="inviteNote" role="status">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
@@ -633,7 +692,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
@@ -654,6 +713,8 @@
     const statusMessage = document.getElementById("statusMessage");
     const debugStatus = document.getElementById("debugStatus");
     const noteContent = document.getElementById("noteContent");
+    const peopleSection = document.getElementById("peopleSection");
+    const peopleList = document.getElementById("peopleList");
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
     const pathHangoutId = pathParts[pathParts.length - 1];
@@ -676,6 +737,15 @@
     let auth = null;
     let functions = null;
     let db = null;
+    let currentPreviewData = null;
+    let currentOrganizerName = "";
+    let currentOrganizerId = "";
+    let peopleUnsubscribe = null;
+    let hangoutUnsubscribe = null;
+    let currentPeopleEntries = [];
+    let currentBrowserParticipantId = "";
+    let currentBrowserParticipantName = "";
+    let currentBrowserParticipantStatus = "private";
 
     function setNote(message) {
       noteContent.textContent = message;
@@ -696,6 +766,163 @@
       statusButtons.forEach((button) => {
         const isActive = button.dataset.status === status;
         button.classList.toggle("active", isActive);
+      });
+    }
+
+    function getStatusLabel(status) {
+      switch (status) {
+        case "headedOut":
+          return "Heading out";
+        case "close":
+          return "I’m close";
+        case "arrived":
+          return "I arrived";
+        case "private":
+        default:
+          return "Private";
+      }
+    }
+
+    function getPersonName(person) {
+      const rawName = person?.displayName || person?.name || person?.participantName || person?.fullName || "";
+      return rawName.trim() || "Participant";
+    }
+
+    function getPersonStatus(person) {
+      const rawStatus = person?.status || person?.currentStatus || "private";
+      return getStatusLabel(rawStatus);
+    }
+
+    function clearPeopleSection() {
+      peopleList.innerHTML = "";
+      peopleSection.hidden = true;
+    }
+
+    function stopPeopleListeners() {
+      if (peopleUnsubscribe) {
+        peopleUnsubscribe();
+        peopleUnsubscribe = null;
+      }
+
+      if (hangoutUnsubscribe) {
+        hangoutUnsubscribe();
+        hangoutUnsubscribe = null;
+      }
+
+      currentPeopleEntries = [];
+      clearPeopleSection();
+    }
+
+    function renderPeopleSection() {
+      const entries = [];
+      const seen = new Set();
+
+      if (currentOrganizerName) {
+        entries.push({
+          id: currentOrganizerId || `organizer:${currentOrganizerName}`,
+          displayName: currentOrganizerName,
+          status: "Private",
+          isOrganizer: true
+        });
+        seen.add(currentOrganizerId || `organizer:${currentOrganizerName}`);
+      }
+
+      currentPeopleEntries.forEach((entry) => {
+        const entryId = entry?.id || entry?.participantId || entry?.uid || entry?.userId || entry?.displayName || "";
+        const normalizedName = (entry?.displayName || "").trim().toLowerCase();
+        const organizerName = currentOrganizerName.trim().toLowerCase();
+        const isOrganizerEntry = Boolean(
+          (currentOrganizerId && entryId && String(entryId) === String(currentOrganizerId))
+          || (organizerName && normalizedName && normalizedName === organizerName)
+        );
+
+        if (isOrganizerEntry) {
+          return;
+        }
+
+        if (entryId && seen.has(entryId)) {
+          return;
+        }
+
+        if (entryId) {
+          seen.add(entryId);
+        }
+
+        entries.push({
+          id: entryId || `participant:${entries.length}`,
+          displayName: getPersonName(entry),
+          status: getPersonStatus(entry),
+          isOrganizer: false
+        });
+      });
+
+      if (currentBrowserParticipantId || currentBrowserParticipantName) {
+        const browserId = currentBrowserParticipantId || `browser:${currentBrowserParticipantName}`;
+        if (!seen.has(browserId)) {
+          entries.push({
+            id: browserId,
+            displayName: currentBrowserParticipantName || "Participant",
+            status: getStatusLabel(currentBrowserParticipantStatus),
+            isOrganizer: false
+          });
+        }
+      }
+
+      entries.sort((left, right) => {
+        if (left.isOrganizer !== right.isOrganizer) {
+          return left.isOrganizer ? -1 : 1;
+        }
+
+        return left.displayName.localeCompare(right.displayName);
+      });
+
+      if (!entries.length) {
+        clearPeopleSection();
+        return;
+      }
+
+      peopleList.innerHTML = entries.map((entry) => `
+        <div class="people-row">
+          <div class="people-name">${entry.displayName}</div>
+          <div class="people-status">${entry.status}</div>
+        </div>
+      `).join("");
+      peopleSection.hidden = false;
+    }
+
+    function startPeopleListeners() {
+      if (!db || !hangoutId || hangoutId === "hangout") {
+        return;
+      }
+
+      stopPeopleListeners();
+
+      peopleUnsubscribe = onSnapshot(collection(db, "hangouts", hangoutId, "participants"), (snapshot) => {
+        currentPeopleEntries = snapshot.docs.map((docSnapshot) => ({
+          id: docSnapshot.id,
+          ...docSnapshot.data()
+        }));
+        renderPeopleSection();
+      });
+
+      hangoutUnsubscribe = onSnapshot(doc(db, "hangouts", hangoutId), (snapshot) => {
+        const hangoutData = snapshot.exists() ? snapshot.data() : null;
+        if (hangoutData?.organizerDisplayName) {
+          currentOrganizerName = hangoutData.organizerDisplayName;
+        } else if (currentPreviewData?.organizerDisplayName) {
+          currentOrganizerName = currentPreviewData.organizerDisplayName;
+        }
+        if (hangoutData?.organizerId) {
+          currentOrganizerId = hangoutData.organizerId;
+        }
+
+        const hangoutStatus = hangoutData?.status || currentPreviewData?.status || "active";
+        if (["ended", "expired", "inactive", "unavailable", "not-active", "not_active", "closed", "disabled", "archived"].includes(String(hangoutStatus).toLowerCase())) {
+          renderPreview({ ...(currentPreviewData || {}), status: hangoutStatus });
+          return;
+        }
+
+        renderPeopleSection();
       });
     }
 
@@ -832,6 +1059,8 @@
       joinSection.hidden = true;
       joinedState.hidden = true;
       statusSection.hidden = true;
+      clearPeopleSection();
+      stopPeopleListeners();
       setNote(message);
     }
 
@@ -850,12 +1079,14 @@
       previewTitle.textContent = title;
       previewSubtitle.textContent = "";
       document.title = title;
+      currentPreviewData = preview;
 
       previewDetails.hidden = !(formattedStartTime || locationName || locationAddress || statusText || expiresText || coordinates);
       previewTime.textContent = formattedStartTime || "—";
       previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
       joinedState.hidden = true;
       statusSection.hidden = true;
+      clearPeopleSection();
 
       if (locationName || locationAddress) {
         const mapsQuery = [locationName, locationAddress].filter(Boolean).join(", ");
@@ -878,6 +1109,8 @@
         joinSection.hidden = true;
         joinedState.hidden = true;
         statusSection.hidden = true;
+        clearPeopleSection();
+        stopPeopleListeners();
         setNote("This hangout has ended.");
         return;
       }
@@ -890,6 +1123,8 @@
         joinSection.hidden = true;
         joinedState.hidden = true;
         statusSection.hidden = true;
+        clearPeopleSection();
+        stopPeopleListeners();
         setNote("This invite has expired.");
         return;
       }
@@ -910,12 +1145,14 @@
         setJoinControlsVisible(true);
         joinedState.hidden = true;
         statusSection.hidden = true;
+        clearPeopleSection();
         setNote(detailParts.length ? detailParts.join(" • ") : "Enter your display name to join this hangout from your browser.");
         setJoinMessage("");
       } else {
         setJoinControlsVisible(false);
         joinedState.hidden = true;
         statusSection.hidden = true;
+        clearPeopleSection();
         if (!inviteToken) {
           setNote("This link doesn’t include a join token, so browser joining isn’t available here.");
         } else {
@@ -929,10 +1166,15 @@
       joinedState.hidden = false;
       statusSection.hidden = false;
       joinMessage.textContent = "";
+      currentBrowserParticipantName = displayNameInput.value.trim() || "Participant";
+      currentBrowserParticipantStatus = "private";
+      currentBrowserParticipantId = auth?.currentUser?.uid || "";
       setSelectedStatus("private");
       setStatusMessage("");
       setNote("You’ve joined. Update your status below, or open Impromptu.");
       joinMessage.className = "join-message success";
+      renderPeopleSection();
+      startPeopleListeners();
     }
 
     async function loadPreview(options = {}) {
