@@ -269,7 +269,7 @@
     .join-input {
       width: 100%;
       min-height: 52px;
-      border: 1px solid rgba(157, 130, 244, 0.34);
+      border: 1px solid rgba(185, 170, 255, 0.72);
       border-radius: 12px;
       padding: 14px 16px;
       background: rgba(8, 5, 35, 0.78);
@@ -280,8 +280,8 @@
     }
 
     .join-input:focus {
-      border-color: rgba(157, 130, 244, 0.78);
-      box-shadow: 0 0 0 3px rgba(157, 130, 244, 0.16);
+      border-color: rgba(201, 186, 255, 0.95);
+      box-shadow: 0 0 0 3px rgba(157, 130, 244, 0.18);
     }
 
     .join-message {
@@ -929,7 +929,7 @@
       joinedState.hidden = false;
       statusSection.hidden = false;
       joinMessage.textContent = "";
-      setSelectedStatus("");
+      setSelectedStatus("private");
       setStatusMessage("");
       setNote("You’ve joined. Update your status below, or open Impromptu.");
       joinMessage.className = "join-message success";
