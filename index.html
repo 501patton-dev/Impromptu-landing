@@ -295,6 +295,15 @@
       cursor: wait;
     }
 
+    .leave-button {
+      min-height: 46px;
+      padding: 12px 16px;
+      font-size: 15px;
+      background: rgba(157, 130, 244, 0.14);
+      color: var(--button-secondary-text);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
     .button svg {
       width: 22px;
       height: 22px;
@@ -365,8 +374,16 @@
     .status-section-title {
       font-size: 14px;
       font-weight: 700;
-      letter-spacing: -0.01em;
-      color: var(--text-secondary);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(244, 242, 255, 0.58);
+    }
+
+    .status-section-copy {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--text-muted);
     }
 
     .status-grid {
@@ -647,17 +664,24 @@
         </div>
 
         <div class="joined-state" id="joinedState" hidden>
-          <p class="join-message success">You’ve joined.</p>
+          <p class="join-message success" id="joinedStateText">You’ve joined.</p>
         </div>
+
+        <section class="people-section" id="peopleSection" hidden>
+          <div class="people-section-title">People joined</div>
+          <div class="people-list" id="peopleList"></div>
+        </section>
 
         <div class="status-section" id="statusSection" hidden>
           <div class="status-section-title">Your status</div>
+          <p class="status-section-copy">Let others know where you are.</p>
           <div class="status-grid">
             <button class="status-button" type="button" data-status="headingOut">Heading out</button>
             <button class="status-button" type="button" data-status="close">I’m close</button>
             <button class="status-button" type="button" data-status="arrived">I arrived</button>
-            <button class="status-button" type="button" data-status="private">Private</button>
+            <button class="status-button" type="button" data-status="private">Go private</button>
           </div>
+          <button class="button tertiary leave-button" id="leaveButton" type="button">Leave hangout</button>
           <p class="status-message" id="statusMessage" role="status"></p>
         </div>
 
@@ -697,11 +721,6 @@
 
           <span>Open in Impromptu</span>
         </a>
-
-        <section class="people-section" id="peopleSection" hidden>
-          <div class="people-section-title">People here</div>
-          <div class="people-list" id="peopleList"></div>
-        </section>
 
         <div class="note" id="inviteNote" role="status">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -772,6 +791,8 @@
     const statusSection = document.getElementById("statusSection");
     const statusButtons = Array.from(document.querySelectorAll(".status-button"));
     const statusMessage = document.getElementById("statusMessage");
+    const joinedStateText = document.getElementById("joinedStateText");
+    const leaveButton = document.getElementById("leaveButton");
     const debugStatus = document.getElementById("debugStatus");
     const noteContent = document.getElementById("noteContent");
     const peopleSection = document.getElementById("peopleSection");
@@ -807,6 +828,7 @@
     let currentBrowserParticipantId = "";
     let currentBrowserParticipantName = "";
     let currentBrowserParticipantStatus = "private";
+    let currentBrowserParticipantLeft = false;
     let joinedStateStorageKey = "impromptu-browser-joined";
 
     function setNote(message) {
@@ -944,6 +966,19 @@
       peopleSection.hidden = true;
     }
 
+    function isParticipantActive(entry) {
+      const rawLeftValue = entry?.left || entry?.leftAt || entry?.isLeft || entry?.inactive || entry?.isActive;
+      if (rawLeftValue === true || rawLeftValue === "true" || rawLeftValue === "left") {
+        return false;
+      }
+
+      if (entry?.status === "left") {
+        return false;
+      }
+
+      return true;
+    }
+
     function clearJoinedState() {
       localStorage.removeItem(getJoinedStateStorageKey());
     }
@@ -997,6 +1032,10 @@
       }
 
       currentPeopleEntries.forEach((entry) => {
+        if (!isParticipantActive(entry)) {
+          return;
+        }
+
         const entryId = entry?.id || entry?.participantId || entry?.uid || entry?.userId || entry?.displayName || "";
         const normalizedName = (entry?.displayName || "").trim().toLowerCase();
         const organizerName = currentOrganizerName.trim().toLowerCase();
@@ -1027,7 +1066,7 @@
         });
       });
 
-      if (currentBrowserParticipantId || currentBrowserParticipantName) {
+      if (!currentBrowserParticipantLeft && (currentBrowserParticipantId || currentBrowserParticipantName)) {
         const browserId = currentBrowserParticipantId || `browser:${currentBrowserParticipantName}`;
         if (!seen.has(browserId)) {
           entries.push({
@@ -1260,7 +1299,8 @@
       document.title = title;
       currentPreviewData = preview;
 
-      previewDetails.hidden = !debugModeEnabled || !(formattedStartTime || locationName || locationAddress || statusText || expiresText || coordinates);
+      previewDetails.hidden = !(formattedStartTime || locationName || locationAddress);
+      previewSubtitle.textContent = "";
       previewTime.textContent = formattedStartTime || "—";
       previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
       joinedState.hidden = true;
@@ -1352,18 +1392,33 @@
       joinedState.hidden = false;
       statusSection.hidden = false;
       joinMessage.textContent = "";
+      currentBrowserParticipantLeft = false;
       if (!restoreFromStorage) {
         currentBrowserParticipantName = displayNameInput.value.trim() || "Participant";
         currentBrowserParticipantStatus = "private";
         currentBrowserParticipantId = auth?.currentUser?.uid || "";
         saveJoinedState();
       } else if (participantData) {
-        currentBrowserParticipantStatus = participantData?.status || currentBrowserParticipantStatus;
+        currentBrowserParticipantStatus = normalizeParticipantStatus(participantData?.status || currentBrowserParticipantStatus);
+        currentBrowserParticipantLeft = Boolean(participantData?.left || participantData?.isLeft || participantData?.status === "left");
         setSelectedStatus(currentBrowserParticipantStatus);
       }
       setSelectedStatus(currentBrowserParticipantStatus || "private");
+      const activityText = currentPreviewData?.activityDisplayName || currentPreviewData?.activity || "this hangout";
+      const locationName = currentPreviewData?.locationName || currentPreviewData?.destination || currentPreviewData?.location || "";
+      const locationAddress = currentPreviewData?.locationAddress || currentPreviewData?.address || "";
+      const locationText = locationName ? `at ${locationName}` : "";
+
+      previewTitle.textContent = `You’re joining ${currentOrganizerName || "your host"} for ${activityText}`;
+      previewSubtitle.textContent = locationText;
+      previewTime.textContent = formatDate(currentPreviewData?.startTime || currentPreviewData?.startsAt || currentPreviewData?.start || currentPreviewData?.when || currentPreviewData?.scheduledAt) || "—";
+      previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
+      previewDetails.hidden = !(previewTime.textContent !== "—" || locationName || locationAddress);
+
       setStatusMessage("");
-      setNote("You’ve joined. Update your status below, or open Impromptu.");
+      setNote("You’ve joined this plan. Update your status below.");
+      joinedStateText.textContent = `You’re joining ${currentOrganizerName || "your host"} for ${activityText}`;
+      joinedState.classList.toggle("success", true);
       joinMessage.className = "join-message success";
       renderPeopleSection();
       startPeopleListeners();
@@ -1412,6 +1467,47 @@
         return null;
       }
     }
+
+    leaveButton.addEventListener("click", async function () {
+      if (!auth || !functions || !hangoutId || !currentBrowserParticipantId) {
+        setStatusMessage("Couldn’t leave this hangout right now.", true);
+        return;
+      }
+
+      leaveButton.disabled = true;
+      leaveButton.textContent = "Leaving...";
+      setStatusMessage("Leaving this hangout...");
+
+      try {
+        const updateParticipantStatus = httpsCallable(functions, "updateParticipantStatus");
+        const result = await updateParticipantStatus({
+          hangoutId,
+          status: "left"
+        });
+
+        if (result?.data?.ok) {
+          currentBrowserParticipantLeft = true;
+          currentBrowserParticipantStatus = "private";
+          setSelectedStatus("private");
+          statusSection.hidden = true;
+          joinedState.hidden = false;
+          joinedStateText.textContent = "You left this hangout.";
+          setNote("Your status is no longer visible.");
+          setStatusMessage("");
+          renderPeopleSection();
+          clearJoinedState();
+          setJoinControlsVisible(false);
+        } else {
+          throw new Error("Leave failed");
+        }
+      } catch (error) {
+        console.error("[join debug] leave hangout error", error);
+        setStatusMessage("Couldn’t leave this hangout right now.", true);
+      } finally {
+        leaveButton.disabled = false;
+        leaveButton.textContent = "Leave hangout";
+      }
+    });
 
     joinButton.addEventListener("click", async function () {
       const displayName = displayNameInput.value.trim();
