@@ -653,7 +653,7 @@
         <div class="status-section" id="statusSection" hidden>
           <div class="status-section-title">Your status</div>
           <div class="status-grid">
-            <button class="status-button" type="button" data-status="headedOut">Heading out</button>
+            <button class="status-button" type="button" data-status="headingOut">Heading out</button>
             <button class="status-button" type="button" data-status="close">I’m close</button>
             <button class="status-button" type="button" data-status="arrived">I arrived</button>
             <button class="status-button" type="button" data-status="private">Private</button>
@@ -825,15 +825,35 @@
     }
 
     function setSelectedStatus(status) {
+      const normalizedStatus = normalizeParticipantStatus(status);
       statusButtons.forEach((button) => {
-        const isActive = button.dataset.status === status;
+        const isActive = button.dataset.status === normalizedStatus;
         button.classList.toggle("active", isActive);
       });
     }
 
-    function getStatusLabel(status) {
-      switch (status) {
+    function normalizeParticipantStatus(status) {
+      // Keep raw status values aligned with the iOS/backend canonical strings.
+      const rawStatus = String(status || "").trim();
+      switch (rawStatus) {
+        case "headingOut":
+          return "headingOut";
         case "headedOut":
+          return "headingOut";
+        case "close":
+          return "close";
+        case "arrived":
+          return "arrived";
+        case "private":
+          return "private";
+        default:
+          return "private";
+      }
+    }
+
+    function getStatusLabel(status) {
+      switch (normalizeParticipantStatus(status)) {
+        case "headingOut":
           return "Heading out";
         case "close":
           return "I’m close";
@@ -904,7 +924,7 @@
         const participantData = participantDoc.data();
         currentBrowserParticipantId = storedState.participantId;
         currentBrowserParticipantName = storedState.displayName || getPersonName(participantData) || "Participant";
-        currentBrowserParticipantStatus = participantData?.status || "private";
+        currentBrowserParticipantStatus = normalizeParticipantStatus(participantData?.status || "private");
         displayNameInput.value = currentBrowserParticipantName;
         showJoinedState({ restoreFromStorage: true, participantData });
         return true;
@@ -1469,8 +1489,8 @@
           });
 
           if (result?.data?.ok) {
-            currentBrowserParticipantStatus = status;
-            setSelectedStatus(status);
+            currentBrowserParticipantStatus = normalizeParticipantStatus(status);
+            setSelectedStatus(currentBrowserParticipantStatus);
             setStatusMessage("Status updated.");
           } else {
             throw new Error("Status update failed");
