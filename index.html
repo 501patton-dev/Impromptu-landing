@@ -369,22 +369,23 @@
 
     .people-section {
       margin-top: 18px;
-      padding-top: 14px;
+      padding-top: 12px;
       border-top: 1px solid rgba(151, 132, 255, 0.14);
       display: grid;
-      gap: 10px;
+      gap: 8px;
     }
 
     .people-section-title {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 700;
-      letter-spacing: -0.01em;
-      color: var(--text-secondary);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(244, 242, 255, 0.58);
     }
 
     .people-list {
       display: grid;
-      gap: 8px;
+      gap: 6px;
     }
 
     .people-row {
@@ -392,8 +393,8 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 10px 0;
-      border-bottom: 1px solid rgba(151, 132, 255, 0.1);
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(151, 132, 255, 0.08);
     }
 
     .people-row:last-child {
@@ -411,11 +412,11 @@
     }
 
     .people-status {
-      padding: 6px 10px;
+      padding: 5px 8px;
       border-radius: 999px;
-      background: rgba(157, 130, 244, 0.14);
-      color: var(--text-secondary);
-      font-size: 12px;
+      background: rgba(157, 130, 244, 0.12);
+      color: rgba(244, 242, 255, 0.74);
+      font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.01em;
       white-space: nowrap;
@@ -821,7 +822,7 @@
         entries.push({
           id: currentOrganizerId || `organizer:${currentOrganizerName}`,
           displayName: currentOrganizerName,
-          status: "Private",
+          status: "Host",
           isOrganizer: true
         });
         seen.add(currentOrganizerId || `organizer:${currentOrganizerName}`);
