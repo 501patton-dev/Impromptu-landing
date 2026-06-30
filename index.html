@@ -403,7 +403,7 @@
     }
 
     .people-name {
-      font-size: 15px;
+      font-size: 16px;
       line-height: 1.35;
       color: var(--text-primary);
       overflow: hidden;
@@ -416,7 +416,7 @@
       border-radius: 999px;
       background: rgba(157, 130, 244, 0.12);
       color: rgba(244, 242, 255, 0.74);
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.01em;
       white-space: nowrap;
@@ -747,6 +747,7 @@
     let currentBrowserParticipantId = "";
     let currentBrowserParticipantName = "";
     let currentBrowserParticipantStatus = "private";
+    let joinedStateStorageKey = "impromptu-browser-joined";
 
     function setNote(message) {
       noteContent.textContent = message;
@@ -794,9 +795,77 @@
       return getStatusLabel(rawStatus);
     }
 
+    function getJoinedStateStorageKey() {
+      return `${joinedStateStorageKey}:${hangoutId || ""}`;
+    }
+
+    function saveJoinedState() {
+      if (!hangoutId || hangoutId === "hangout") {
+        return;
+      }
+
+      const state = {
+        hangoutId,
+        participantId: currentBrowserParticipantId,
+        displayName: currentBrowserParticipantName || displayNameInput.value.trim() || "Participant",
+        joinedAt: Date.now()
+      };
+
+      localStorage.setItem(getJoinedStateStorageKey(), JSON.stringify(state));
+    }
+
+    async function restoreJoinedState() {
+      if (!hangoutId || hangoutId === "hangout") {
+        return false;
+      }
+
+      const storedStateText = localStorage.getItem(getJoinedStateStorageKey());
+      if (!storedStateText) {
+        return false;
+      }
+
+      try {
+        const storedState = JSON.parse(storedStateText);
+        if (!storedState?.participantId) {
+          clearJoinedState();
+          return false;
+        }
+
+        if (!db) {
+          return false;
+        }
+
+        const participantDoc = await getDoc(doc(db, "hangouts", hangoutId, "participants", storedState.participantId));
+        if (!participantDoc.exists()) {
+          clearJoinedState();
+          return false;
+        }
+
+        const participantData = participantDoc.data();
+        currentBrowserParticipantId = storedState.participantId;
+        currentBrowserParticipantName = storedState.displayName || getPersonName(participantData) || "Participant";
+        currentBrowserParticipantStatus = participantData?.status || "private";
+        displayNameInput.value = currentBrowserParticipantName;
+        showJoinedState({ restoreFromStorage: true, participantData });
+        return true;
+      } catch (error) {
+        console.error("[join debug] restore joined state error", {
+          code: error?.code,
+          message: error?.message,
+          details: error?.details
+        });
+        clearJoinedState();
+        return false;
+      }
+    }
+
     function clearPeopleSection() {
       peopleList.innerHTML = "";
       peopleSection.hidden = true;
+    }
+
+    function clearJoinedState() {
+      localStorage.removeItem(getJoinedStateStorageKey());
     }
 
     function stopPeopleListeners() {
@@ -817,13 +886,32 @@
     function renderPeopleSection() {
       const entries = [];
       const seen = new Set();
+      const hostParticipantEntry = currentPeopleEntries.find((entry) => {
+        const entryId = entry?.id || entry?.participantId || entry?.uid || entry?.userId || "";
+        const normalizedName = (entry?.displayName || "").trim().toLowerCase();
+        const organizerName = currentOrganizerName.trim().toLowerCase();
+        const matchesId = Boolean(currentOrganizerId && entryId && String(entryId) === String(currentOrganizerId));
+        const matchesName = Boolean(organizerName && normalizedName && normalizedName === organizerName);
+        const matchesRole = Boolean(entry?.role === "host" || entry?.role === "organizer" || entry?.isOrganizer || entry?.isHost);
+        return matchesId || matchesName || matchesRole;
+      });
 
-      if (currentOrganizerName) {
+      if (hostParticipantEntry) {
+        entries.push({
+          id: hostParticipantEntry.id || currentOrganizerId || `organizer:${currentOrganizerName}`,
+          displayName: getPersonName(hostParticipantEntry) || currentOrganizerName || "Host",
+          status: getPersonStatus(hostParticipantEntry),
+          isOrganizer: true,
+          roleLabel: "Host"
+        });
+        seen.add(hostParticipantEntry.id || currentOrganizerId || `organizer:${currentOrganizerName}`);
+      } else if (currentOrganizerName) {
         entries.push({
           id: currentOrganizerId || `organizer:${currentOrganizerName}`,
           displayName: currentOrganizerName,
           status: "Host",
-          isOrganizer: true
+          isOrganizer: true,
+          roleLabel: "Host"
         });
         seen.add(currentOrganizerId || `organizer:${currentOrganizerName}`);
       }
@@ -835,9 +923,10 @@
         const isOrganizerEntry = Boolean(
           (currentOrganizerId && entryId && String(entryId) === String(currentOrganizerId))
           || (organizerName && normalizedName && normalizedName === organizerName)
+          || (entry?.role === "host" || entry?.role === "organizer" || entry?.isOrganizer || entry?.isHost)
         );
 
-        if (isOrganizerEntry) {
+        if (isOrganizerEntry || !entryId) {
           return;
         }
 
@@ -853,7 +942,8 @@
           id: entryId || `participant:${entries.length}`,
           displayName: getPersonName(entry),
           status: getPersonStatus(entry),
-          isOrganizer: false
+          isOrganizer: false,
+          roleLabel: ""
         });
       });
 
@@ -864,7 +954,8 @@
             id: browserId,
             displayName: currentBrowserParticipantName || "Participant",
             status: getStatusLabel(currentBrowserParticipantStatus),
-            isOrganizer: false
+            isOrganizer: false,
+            roleLabel: ""
           });
         }
       }
@@ -882,12 +973,17 @@
         return;
       }
 
-      peopleList.innerHTML = entries.map((entry) => `
-        <div class="people-row">
-          <div class="people-name">${entry.displayName}</div>
-          <div class="people-status">${entry.status}</div>
-        </div>
-      `).join("");
+      peopleList.innerHTML = entries.map((entry) => {
+        const label = entry.isOrganizer ? "Host" : entry.roleLabel;
+        const statusText = entry.isOrganizer && entry.status && entry.status !== "Host" ? entry.status : entry.status;
+        const metaText = label && statusText && statusText !== "Host" ? `${label} · ${statusText}` : (label || statusText || "Private");
+        return `
+          <div class="people-row">
+            <div class="people-name">${entry.displayName}</div>
+            <div class="people-status">${metaText}</div>
+          </div>
+        `;
+      }).join("");
       peopleSection.hidden = false;
     }
 
@@ -1062,6 +1158,7 @@
       statusSection.hidden = true;
       clearPeopleSection();
       stopPeopleListeners();
+      clearJoinedState();
       setNote(message);
     }
 
@@ -1112,6 +1209,7 @@
         statusSection.hidden = true;
         clearPeopleSection();
         stopPeopleListeners();
+        clearJoinedState();
         setNote("This hangout has ended.");
         return;
       }
@@ -1126,6 +1224,7 @@
         statusSection.hidden = true;
         clearPeopleSection();
         stopPeopleListeners();
+        clearJoinedState();
         setNote("This invite has expired.");
         return;
       }
@@ -1162,15 +1261,22 @@
       }
     }
 
-    function showJoinedState() {
+    function showJoinedState(options = {}) {
+      const { restoreFromStorage = false, participantData = null } = options;
       setJoinControlsVisible(false);
       joinedState.hidden = false;
       statusSection.hidden = false;
       joinMessage.textContent = "";
-      currentBrowserParticipantName = displayNameInput.value.trim() || "Participant";
-      currentBrowserParticipantStatus = "private";
-      currentBrowserParticipantId = auth?.currentUser?.uid || "";
-      setSelectedStatus("private");
+      if (!restoreFromStorage) {
+        currentBrowserParticipantName = displayNameInput.value.trim() || "Participant";
+        currentBrowserParticipantStatus = "private";
+        currentBrowserParticipantId = auth?.currentUser?.uid || "";
+        saveJoinedState();
+      } else if (participantData) {
+        currentBrowserParticipantStatus = participantData?.status || currentBrowserParticipantStatus;
+        setSelectedStatus(currentBrowserParticipantStatus);
+      }
+      setSelectedStatus(currentBrowserParticipantStatus || "private");
       setStatusMessage("");
       setNote("You’ve joined. Update your status below, or open Impromptu.");
       joinMessage.className = "join-message success";
@@ -1200,6 +1306,12 @@
             return preview;
           }
           renderPreview(preview);
+          if (!isPreviewUnavailableState(preview)) {
+            const restored = await restoreJoinedState();
+            if (!restored) {
+              clearJoinedState();
+            }
+          }
           return preview;
         }
 
@@ -1292,6 +1404,7 @@
           });
 
           if (result?.data?.ok) {
+            currentBrowserParticipantStatus = status;
             setSelectedStatus(status);
             setStatusMessage("Status updated.");
           } else {
