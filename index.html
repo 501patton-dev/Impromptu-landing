@@ -254,8 +254,11 @@
 
     .join-section {
       margin-top: 18px;
-      padding: 18px 0 0;
-      border-top: 1px solid rgba(151, 132, 255, 0.14);
+      padding: 18px 18px 0;
+      border: 1px solid rgba(151, 132, 255, 0.16);
+      border-radius: 16px;
+      background: rgba(157, 130, 244, 0.06);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
       display: grid;
       gap: 12px;
     }
@@ -273,10 +276,11 @@
       border: 1px solid rgba(151, 132, 255, 0.24);
       border-radius: 12px;
       padding: 14px 16px;
-      background: rgba(4, 2, 25, 0.5);
+      background: rgba(6, 3, 23, 0.74);
       color: var(--text-primary);
       font-size: 16px;
       outline: none;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
     }
 
     .join-input:focus {
@@ -308,8 +312,11 @@
 
     .status-section {
       margin-top: 18px;
-      padding: 18px 0 0;
-      border-top: 1px solid rgba(151, 132, 255, 0.14);
+      padding: 18px 18px 0;
+      border: 1px solid rgba(151, 132, 255, 0.16);
+      border-radius: 16px;
+      background: rgba(157, 130, 244, 0.06);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
       display: grid;
       gap: 12px;
     }
@@ -332,12 +339,13 @@
       border: 1px solid rgba(151, 132, 255, 0.24);
       border-radius: 12px;
       padding: 12px 10px;
-      background: rgba(4, 2, 25, 0.5);
+      background: rgba(6, 3, 23, 0.74);
       color: var(--text-primary);
       font-size: 15px;
       font-weight: 700;
       letter-spacing: -0.01em;
       cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
       transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
     }
 
@@ -346,8 +354,9 @@
     }
 
     .status-button.active {
-      border-color: rgba(157, 130, 244, 0.7);
-      background: rgba(157, 130, 244, 0.18);
+      border-color: rgba(157, 130, 244, 0.78);
+      background: rgba(157, 130, 244, 0.2);
+      box-shadow: 0 0 0 1px rgba(157, 130, 244, 0.12);
     }
 
     .status-button[disabled] {
@@ -789,6 +798,40 @@
       return Boolean(preview.status === "expired" || (expiresAt && expiresAt.getTime() < Date.now()));
     }
 
+    function isPreviewUnavailableState(preview) {
+      if (!preview) {
+        return true;
+      }
+
+      return Boolean(
+        isPreviewEnded(preview)
+        || isPreviewExpired(preview)
+        || ["ended", "expired", "inactive", "unavailable", "not-active", "not_active", "closed", "disabled", "archived"].includes(preview.status)
+      );
+    }
+
+    function isInactiveHangoutError(error) {
+      const errorText = [error?.code, error?.message, error?.details]
+        .filter(Boolean)
+        .map((value) => String(value))
+        .join(" ")
+        .toLowerCase();
+
+      return Boolean(
+        errorText.includes("inactive")
+        || errorText.includes("ended")
+        || errorText.includes("expired")
+        || errorText.includes("unavailable")
+        || errorText.includes("not active")
+        || errorText.includes("permission denied")
+        || errorText.includes("failed precondition")
+        || errorText.includes("not found")
+        || errorText.includes("failed-precondition")
+        || errorText.includes("permission-denied")
+        || errorText.includes("not-found")
+      );
+    }
+
     function setPreviewUnavailable(message) {
       previewTitle.textContent = "The invite preview is unavailable.";
       previewSubtitle.textContent = "Open Impromptu to continue.";
@@ -900,7 +943,9 @@
       joinMessage.className = "join-message success";
     }
 
-    async function loadPreview() {
+    async function loadPreview(options = {}) {
+      const { preserveCurrentState = false } = options;
+
       if (!hangoutId || hangoutId === "hangout") {
         setPreviewUnavailable("This invite link is missing the information needed for browser joining.");
         return null;
@@ -916,6 +961,9 @@
         const previewSnapshot = await getDoc(doc(db, "hangoutPreviews", hangoutId));
         if (previewSnapshot.exists()) {
           const preview = previewSnapshot.data();
+          if (preserveCurrentState && !isPreviewUnavailableState(preview)) {
+            return preview;
+          }
           renderPreview(preview);
           return preview;
         }
@@ -1020,6 +1068,15 @@
             message: error?.message,
             details: error?.details
           });
+
+          if (isInactiveHangoutError(error)) {
+            const refreshedPreview = await loadPreview({ preserveCurrentState: true });
+            if (isPreviewUnavailableState(refreshedPreview)) {
+              setStatusMessage("");
+              return;
+            }
+          }
+
           setStatusMessage("Couldn’t update your status right now.", true);
         } finally {
           statusButtons.forEach((candidate) => {
