@@ -229,6 +229,55 @@
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
 
+    .inline-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      color: rgba(216, 207, 252, 0.9);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      text-decoration: none;
+      opacity: 0.96;
+    }
+
+    .inline-link svg {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+    }
+
+    .inline-link:hover,
+    .inline-link:focus-visible {
+      color: #e9ddff;
+      text-decoration: underline;
+      opacity: 1;
+    }
+
+    .beta-request {
+      margin: 18px 0 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      color: rgba(244, 242, 255, 0.54);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .beta-link {
+      color: rgba(216, 207, 252, 0.9);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .beta-link:hover,
+    .beta-link:focus-visible {
+      color: #e9ddff;
+      text-decoration: underline;
+    }
+
     .button:active {
       transform: scale(0.985);
       background: #9277e8;
@@ -626,28 +675,28 @@
             </svg>
             <span>Open in Maps</span>
           </a>
-
-          <a class="button tertiary" id="openButton" href="#">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M14 4h6v6M20 4l-9 9"
-                stroke="currentColor"
-                stroke-width="2.15"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M11 5H7.2C5.43 5 4 6.43 4 8.2v8.6C4 18.57 5.43 20 7.2 20h8.6c1.77 0 3.2-1.43 3.2-3.2V13"
-                stroke="currentColor"
-                stroke-width="2.15"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-
-            <span>Open in Impromptu</span>
-          </a>
         </div>
+
+        <a class="inline-link" id="openButton" href="#" hidden>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M14 4h6v6M20 4l-9 9"
+              stroke="currentColor"
+              stroke-width="2.15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M11 5H7.2C5.43 5 4 6.43 4 8.2v8.6C4 18.57 5.43 20 7.2 20h8.6c1.77 0 3.2-1.43 3.2-3.2V13"
+              stroke="currentColor"
+              stroke-width="2.15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+
+          <span>Open in Impromptu</span>
+        </a>
 
         <section class="people-section" id="peopleSection" hidden>
           <div class="people-section-title">People here</div>
@@ -681,6 +730,17 @@
             If the app doesn&rsquo;t open, make sure Impromptu is installed on your device.
           </div>
         </div>
+
+        <p class="beta-request">
+          <span>Want to organize your own?</span>
+          <a
+            class="beta-link"
+            href="mailto:YOUR_EMAIL@example.com?subject=Impromptu%20beta%20access&body=Hi%20Levi%2C%20I%27d%20like%20to%20try%20organizing%20with%20Impromptu."
+            title="Replace the placeholder email before sharing"
+          >
+            Request beta access
+          </a>
+        </p>
       </div>
 
       <footer class="footer">
@@ -1045,16 +1105,16 @@
       if (hangoutId && hangoutId !== "hangout") {
         const appUrl = `impromptu://hangout/${encodeURIComponent(hangoutId)}`;
 
+        openButton.hidden = false;
         openButton.setAttribute("href", appUrl);
-        openButton.addEventListener("click", function (event) {
+        openButton.onclick = function (event) {
           event.preventDefault();
           window.location.href = appUrl;
-        });
+        };
+        openButton.removeAttribute("aria-disabled");
+        openButton.classList.remove("disabled");
       } else {
-        openButton.textContent = "Invite link missing";
-        openButton.classList.add("disabled");
-        openButton.setAttribute("aria-disabled", "true");
-        openButton.removeAttribute("href");
+        openButton.hidden = true;
       }
     }
 
@@ -1153,6 +1213,7 @@
       previewSubtitle.textContent = "Open Impromptu to continue.";
       previewDetails.hidden = true;
       mapsButton.hidden = true;
+      openButton.hidden = true;
       joinSection.hidden = true;
       joinedState.hidden = true;
       statusSection.hidden = true;
@@ -1179,7 +1240,7 @@
       document.title = title;
       currentPreviewData = preview;
 
-      previewDetails.hidden = !(formattedStartTime || locationName || locationAddress || statusText || expiresText || coordinates);
+      previewDetails.hidden = !debugModeEnabled || !(formattedStartTime || locationName || locationAddress || statusText || expiresText || coordinates);
       previewTime.textContent = formattedStartTime || "—";
       previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
       joinedState.hidden = true;
@@ -1204,6 +1265,7 @@
         previewSubtitle.textContent = "This invite is no longer active.";
         previewDetails.hidden = true;
         mapsButton.hidden = true;
+        openButton.hidden = true;
         joinSection.hidden = true;
         joinedState.hidden = true;
         statusSection.hidden = true;
@@ -1219,6 +1281,7 @@
         previewSubtitle.textContent = "Ask the organizer to send you a new invite.";
         previewDetails.hidden = true;
         mapsButton.hidden = true;
+        openButton.hidden = true;
         joinSection.hidden = true;
         joinedState.hidden = true;
         statusSection.hidden = true;
@@ -1231,14 +1294,16 @@
 
       const canJoin = preview.status === "active" && !isPreviewExpired(preview) && !isPreviewEnded(preview) && Boolean(inviteToken);
       const detailParts = [];
-      if (statusText) {
-        detailParts.push(`Status: ${statusText}`);
-      }
-      if (expiresText) {
-        detailParts.push(`Expires: ${expiresText}`);
-      }
-      if (coordinates) {
-        detailParts.push(`Coordinates: ${coordinates}`);
+      if (debugModeEnabled) {
+        if (statusText) {
+          detailParts.push(`Status: ${statusText}`);
+        }
+        if (expiresText) {
+          detailParts.push(`Expires: ${expiresText}`);
+        }
+        if (coordinates) {
+          detailParts.push(`Coordinates: ${coordinates}`);
+        }
       }
 
       if (canJoin) {
