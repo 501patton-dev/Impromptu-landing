@@ -772,7 +772,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getFirestore, doc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
@@ -929,6 +929,22 @@
       localStorage.setItem(getJoinedStateStorageKey(), JSON.stringify(state));
     }
 
+    function saveLeftState() {
+      if (!hangoutId || hangoutId === "hangout") {
+        return;
+      }
+
+      const state = {
+        hangoutId,
+        participantId: currentBrowserParticipantId,
+        displayName: currentBrowserParticipantName || displayNameInput.value.trim() || "Participant",
+        left: true,
+        leftAt: Date.now()
+      };
+
+      localStorage.setItem(getJoinedStateStorageKey(), JSON.stringify(state));
+    }
+
     async function restoreJoinedState() {
       if (!hangoutId || hangoutId === "hangout") {
         return false;
@@ -961,6 +977,12 @@
         currentBrowserParticipantName = storedState.displayName || getPersonName(participantData) || "Participant";
         currentBrowserParticipantStatus = normalizeParticipantStatus(participantData?.status || "private");
         displayNameInput.value = currentBrowserParticipantName;
+
+        if (storedState?.left || !isParticipantActive(participantData)) {
+          showLeftState({ saveState: false });
+          return true;
+        }
+
         showJoinedState({ restoreFromStorage: true, participantData });
         return true;
       } catch (error) {
@@ -1004,6 +1026,22 @@
 
     function clearJoinedState() {
       localStorage.removeItem(getJoinedStateStorageKey());
+    }
+
+    function markCurrentParticipantLeftInMemory() {
+      currentPeopleEntries = currentPeopleEntries.map((entry) => {
+        const entryId = entry?.id || entry?.participantId || entry?.uid || entry?.userId || "";
+        if (!currentBrowserParticipantId || String(entryId) !== String(currentBrowserParticipantId)) {
+          return entry;
+        }
+
+        return {
+          ...entry,
+          status: "left",
+          left: true,
+          isActive: false
+        };
+      });
     }
 
     function stopPeopleListeners() {
@@ -1466,6 +1504,32 @@
       startPeopleListeners();
     }
 
+    function showLeftState(options = {}) {
+      const { saveState = true } = options;
+      currentBrowserParticipantLeft = true;
+      currentBrowserParticipantStatus = "private";
+      markCurrentParticipantLeftInMemory();
+      setJoinControlsVisible(false);
+      setSelectedStatus("private");
+      joinedState.hidden = false;
+      statusSection.hidden = true;
+      mapsButton.hidden = true;
+      openButton.hidden = true;
+      previewTitle.textContent = "You left this hangout.";
+      previewSubtitle.textContent = "Your status is no longer visible.";
+      previewDetails.hidden = true;
+      joinedStateText.textContent = "You left this hangout.";
+      setNote("Your status is no longer visible.");
+      setStatusMessage("");
+      joinMessage.textContent = "";
+      renderPeopleSection();
+      startPeopleListeners();
+
+      if (saveState) {
+        saveLeftState();
+      }
+    }
+
     async function loadPreview(options = {}) {
       const { preserveCurrentState = false } = options;
 
@@ -1528,17 +1592,20 @@
         });
 
         if (result?.data?.ok) {
-          currentBrowserParticipantLeft = true;
-          currentBrowserParticipantStatus = "private";
-          setSelectedStatus("private");
-          statusSection.hidden = true;
-          joinedState.hidden = false;
-          joinedStateText.textContent = "You left this hangout.";
-          setNote("Your status is no longer visible.");
-          setStatusMessage("");
-          renderPeopleSection();
-          clearJoinedState();
-          setJoinControlsVisible(false);
+          if (db && currentBrowserParticipantId) {
+            try {
+              await updateDoc(doc(db, "hangouts", hangoutId, "participants", currentBrowserParticipantId), {
+                status: "left",
+                left: true,
+                leftAt: serverTimestamp(),
+                isActive: false
+              });
+            } catch (error) {
+              console.warn("[join debug] explicit leave marker update failed", error);
+            }
+          }
+
+          showLeftState();
         } else {
           throw new Error("Leave failed");
         }
