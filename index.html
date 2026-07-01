@@ -647,6 +647,22 @@
           </div>
         </div>
 
+        <div class="action-stack" id="secondaryActions">
+          <a class="button secondary" id="mapsButton" href="#" hidden>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M9 4.5 3 6.5v13l6-2 6 2 6-2v-13l-6 2-6-2Z"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linejoin="round"
+              />
+              <path d="M9 4.5v13" stroke="currentColor" stroke-width="1.8" />
+              <path d="M15 6.5v13" stroke="currentColor" stroke-width="1.8" />
+            </svg>
+            <span>Open in Maps</span>
+          </a>
+        </div>
+
         <div class="join-section" id="joinSection" hidden>
           <label class="join-label" for="displayNameInput">Display name</label>
           <input
@@ -668,7 +684,7 @@
         </div>
 
         <section class="people-section" id="peopleSection" hidden>
-          <div class="people-section-title">People joined</div>
+          <div class="people-section-title">People Joined</div>
           <div class="people-list" id="peopleList"></div>
         </section>
 
@@ -683,22 +699,6 @@
           </div>
           <button class="button tertiary leave-button" id="leaveButton" type="button">Leave hangout</button>
           <p class="status-message" id="statusMessage" role="status"></p>
-        </div>
-
-        <div class="action-stack" id="secondaryActions">
-          <a class="button secondary" id="mapsButton" href="#" hidden>
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M9 4.5 3 6.5v13l6-2 6 2 6-2v-13l-6 2-6-2Z"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linejoin="round"
-              />
-              <path d="M9 4.5v13" stroke="currentColor" stroke-width="1.8" />
-              <path d="M15 6.5v13" stroke="currentColor" stroke-width="1.8" />
-            </svg>
-            <span>Open in Maps</span>
-          </a>
         </div>
 
         <a class="inline-link" id="openButton" href="#" hidden>
@@ -822,6 +822,7 @@
     let currentPreviewData = null;
     let currentOrganizerName = "";
     let currentOrganizerId = "";
+    let currentOrganizerStatus = "private";
     let peopleUnsubscribe = null;
     let hangoutUnsubscribe = null;
     let currentPeopleEntries = [];
@@ -895,6 +896,18 @@
     function getPersonStatus(person) {
       const rawStatus = person?.status || person?.currentStatus || "private";
       return getStatusLabel(rawStatus);
+    }
+
+    function getLocationSummary(locationName, locationAddress) {
+      if (locationName) {
+        return [`at ${locationName}`, locationAddress].filter(Boolean).join(" • ");
+      }
+
+      if (locationAddress) {
+        return `at ${locationAddress}`;
+      }
+
+      return "";
     }
 
     function getJoinedStateStorageKey() {
@@ -1034,7 +1047,7 @@
         entries.push({
           id: currentOrganizerId || `organizer:${currentOrganizerName}`,
           displayName: currentOrganizerName,
-          status: "Host",
+          status: getStatusLabel(currentOrganizerStatus),
           isOrganizer: true,
           roleLabel: "Host"
         });
@@ -1149,6 +1162,11 @@
         }
         if (hangoutData?.organizerId) {
           currentOrganizerId = hangoutData.organizerId;
+        }
+        if (hangoutData?.organizerStatus || hangoutData?.hostStatus) {
+          currentOrganizerStatus = normalizeParticipantStatus(hangoutData.organizerStatus || hangoutData.hostStatus);
+        } else if (currentPreviewData?.organizerStatus || currentPreviewData?.hostStatus) {
+          currentOrganizerStatus = normalizeParticipantStatus(currentPreviewData.organizerStatus || currentPreviewData.hostStatus);
         }
 
         const hangoutStatus = hangoutData?.status || currentPreviewData?.status || "active";
@@ -1317,6 +1335,11 @@
       previewSubtitle.textContent = "";
       document.title = title;
       currentPreviewData = preview;
+      if (preview.organizerStatus || preview.hostStatus) {
+        currentOrganizerStatus = normalizeParticipantStatus(preview.organizerStatus || preview.hostStatus);
+      } else {
+        currentOrganizerStatus = "private";
+      }
 
       previewDetails.hidden = !(formattedStartTime || locationName || locationAddress);
       previewSubtitle.textContent = "";
@@ -1426,7 +1449,7 @@
       const activityText = currentPreviewData?.activityDisplayName || currentPreviewData?.activity || "this hangout";
       const locationName = currentPreviewData?.locationName || currentPreviewData?.destination || currentPreviewData?.location || "";
       const locationAddress = currentPreviewData?.locationAddress || currentPreviewData?.address || "";
-      const locationText = locationName ? `at ${locationName}` : "";
+      const locationText = getLocationSummary(locationName, locationAddress);
 
       previewTitle.textContent = `You’re joining ${currentOrganizerName || "your host"} for ${activityText}`;
       previewSubtitle.textContent = locationText;
