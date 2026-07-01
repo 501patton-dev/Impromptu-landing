@@ -967,12 +967,22 @@
     }
 
     function isParticipantActive(entry) {
-      const rawLeftValue = entry?.left || entry?.leftAt || entry?.isLeft || entry?.inactive || entry?.isActive;
-      if (rawLeftValue === true || rawLeftValue === "true" || rawLeftValue === "left") {
+      const leftValues = [entry?.left, entry?.leftAt, entry?.isLeft, entry?.inactive];
+      const hasLeftMarker = leftValues.some((value) => (
+        value === true
+        || value === "true"
+        || value === "left"
+      ));
+
+      if (hasLeftMarker) {
         return false;
       }
 
       if (entry?.status === "left") {
+        return false;
+      }
+
+      if (entry?.isActive === false) {
         return false;
       }
 
@@ -1092,17 +1102,26 @@
         return;
       }
 
-      peopleList.innerHTML = entries.map((entry) => {
+      peopleList.innerHTML = "";
+      entries.forEach((entry) => {
         const label = entry.isOrganizer ? "Host" : entry.roleLabel;
         const statusText = entry.isOrganizer && entry.status && entry.status !== "Host" ? entry.status : entry.status;
         const metaText = label && statusText && statusText !== "Host" ? `${label} · ${statusText}` : (label || statusText || "Private");
-        return `
-          <div class="people-row">
-            <div class="people-name">${entry.displayName}</div>
-            <div class="people-status">${metaText}</div>
-          </div>
-        `;
-      }).join("");
+
+        const row = document.createElement("div");
+        row.className = "people-row";
+
+        const name = document.createElement("div");
+        name.className = "people-name";
+        name.textContent = entry.displayName;
+
+        const status = document.createElement("div");
+        status.className = "people-status";
+        status.textContent = metaText;
+
+        row.append(name, status);
+        peopleList.append(row);
+      });
       peopleSection.hidden = false;
     }
 
