@@ -794,6 +794,7 @@
     const joinedStateText = document.getElementById("joinedStateText");
     const leaveButton = document.getElementById("leaveButton");
     const debugStatus = document.getElementById("debugStatus");
+    const inviteNote = document.getElementById("inviteNote");
     const noteContent = document.getElementById("noteContent");
     const peopleSection = document.getElementById("peopleSection");
     const peopleList = document.getElementById("peopleList");
@@ -833,6 +834,7 @@
     let joinedStateStorageKey = "impromptu-browser-joined";
 
     function setNote(message) {
+      inviteNote.hidden = false;
       noteContent.textContent = message;
     }
 
@@ -908,6 +910,18 @@
       }
 
       return "";
+    }
+
+    function getJoinedTitle(hostName, activityText) {
+      if (!hostName) {
+        return "You’ve joined this hangout";
+      }
+
+      if (!activityText || activityText === "this hangout") {
+        return `You’ve joined ${hostName}`;
+      }
+
+      return `You’ve joined ${hostName} for ${activityText}`;
     }
 
     function getJoinedStateStorageKey() {
@@ -1396,6 +1410,9 @@
       previewSubtitle.textContent = "";
       document.title = title;
       currentPreviewData = preview;
+      if (preview.organizerDisplayName) {
+        currentOrganizerName = preview.organizerDisplayName;
+      }
       if (preview.organizerStatus || preview.hostStatus) {
         currentOrganizerStatus = normalizeParticipantStatus(preview.organizerStatus || preview.hostStatus);
       } else {
@@ -1492,8 +1509,9 @@
     function showJoinedState(options = {}) {
       const { restoreFromStorage = false, participantData = null } = options;
       setJoinControlsVisible(false);
-      joinedState.hidden = false;
+      joinedState.hidden = true;
       statusSection.hidden = false;
+      inviteNote.hidden = true;
       joinMessage.textContent = "";
       currentBrowserParticipantLeft = false;
       if (!restoreFromStorage) {
@@ -1511,16 +1529,16 @@
       const locationName = currentPreviewData?.locationName || currentPreviewData?.destination || currentPreviewData?.location || "";
       const locationAddress = currentPreviewData?.locationAddress || currentPreviewData?.address || "";
       const locationText = getLocationSummary(locationName, locationAddress);
+      const joinedTitle = getJoinedTitle(currentOrganizerName, activityText);
 
-      previewTitle.textContent = `You’re joining ${currentOrganizerName || "your host"} for ${activityText}`;
+      previewTitle.textContent = joinedTitle;
       previewSubtitle.textContent = locationText;
       previewTime.textContent = formatDate(currentPreviewData?.startTime || currentPreviewData?.startsAt || currentPreviewData?.start || currentPreviewData?.when || currentPreviewData?.scheduledAt) || "—";
       previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
       previewDetails.hidden = !(previewTime.textContent !== "—" || locationName || locationAddress);
 
       setStatusMessage("");
-      setNote("You’ve joined this plan. Update your status below.");
-      joinedStateText.textContent = `You’re joining ${currentOrganizerName || "your host"} for ${activityText}`;
+      joinedStateText.textContent = "";
       joinedState.classList.toggle("success", true);
       joinMessage.className = "join-message success";
       renderPeopleSection();
@@ -1535,15 +1553,15 @@
       markCurrentParticipantLeftInMemory();
       setJoinControlsVisible(false);
       setSelectedStatus("private");
-      joinedState.hidden = false;
+      joinedState.hidden = true;
       statusSection.hidden = true;
       mapsButton.hidden = true;
       openButton.hidden = true;
+      inviteNote.hidden = true;
       previewTitle.textContent = "You left this hangout.";
       previewSubtitle.textContent = "Your status is no longer visible.";
       previewDetails.hidden = true;
-      joinedStateText.textContent = "You left this hangout.";
-      setNote("Your status is no longer visible.");
+      joinedStateText.textContent = "";
       setStatusMessage("");
       joinMessage.textContent = "";
       clearPeopleSection();
