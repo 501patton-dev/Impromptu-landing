@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Open in Impromptu</title>
+  <title>Loading your invite</title>
 
   <style>
     :root {
@@ -144,6 +144,48 @@
       line-height: 1.45;
       letter-spacing: -0.03em;
       color: var(--text-secondary);
+    }
+
+    .loading-state {
+      margin: 0 0 28px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .loading-bar {
+      position: relative;
+      width: 100%;
+      height: 6px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(157, 130, 244, 0.14);
+    }
+
+    .loading-bar::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      width: 42%;
+      border-radius: inherit;
+      background: rgba(216, 207, 252, 0.72);
+      animation: loading-slide 1.3s ease-in-out infinite;
+    }
+
+    .loading-note {
+      margin: 0;
+      color: rgba(244, 242, 255, 0.54);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    @keyframes loading-slide {
+      0% {
+        transform: translateX(-105%);
+      }
+
+      100% {
+        transform: translateX(245%);
+      }
     }
 
     .details {
@@ -632,9 +674,14 @@
       <div class="brand-top">IMPROMPTU</div>
 
       <div class="invite-card">
-        <h1 id="previewTitle">You&rsquo;ve been invited to a hangout.</h1>
+        <h1 id="previewTitle">Loading your invite&hellip;</h1>
 
-        <p class="subtitle" id="previewSubtitle"></p>
+        <p class="subtitle" id="previewSubtitle">You&rsquo;ll be able to join here in your browser.</p>
+
+        <div class="loading-state" id="inviteLoading" role="status">
+          <div class="loading-bar" aria-hidden="true"></div>
+          <p class="loading-note">No app needed.</p>
+        </div>
 
         <div class="details" id="previewDetails" hidden>
           <div class="preview-detail">
@@ -722,7 +769,7 @@
           <span>Open in Impromptu</span>
         </a>
 
-        <div class="note" id="inviteNote" role="status">
+        <div class="note" id="inviteNote" role="status" hidden>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
               d="M12 8v5"
@@ -780,6 +827,7 @@
     const mapsButton = document.getElementById("mapsButton");
     const previewTitle = document.getElementById("previewTitle");
     const previewSubtitle = document.getElementById("previewSubtitle");
+    const inviteLoading = document.getElementById("inviteLoading");
     const previewDetails = document.getElementById("previewDetails");
     const previewTime = document.getElementById("previewTime");
     const previewDestination = document.getElementById("previewDestination");
@@ -836,6 +884,25 @@
     function setNote(message) {
       inviteNote.hidden = false;
       noteContent.textContent = message;
+    }
+
+    function showInviteLoading() {
+      document.title = "Loading your invite";
+      previewTitle.textContent = "Loading your invite…";
+      previewSubtitle.textContent = "You’ll be able to join here in your browser.";
+      previewDetails.hidden = true;
+      inviteLoading.hidden = false;
+      mapsButton.hidden = true;
+      openButton.hidden = true;
+      joinSection.hidden = true;
+      joinedState.hidden = true;
+      statusSection.hidden = true;
+      inviteNote.hidden = true;
+      clearPeopleSection();
+    }
+
+    function hideInviteLoading() {
+      inviteLoading.hidden = true;
     }
 
     function setJoinMessage(message, isError = false) {
@@ -1380,6 +1447,7 @@
     }
 
     function setPreviewUnavailable(message) {
+      hideInviteLoading();
       previewTitle.textContent = "The invite preview is unavailable.";
       previewSubtitle.textContent = "Open Impromptu to continue.";
       previewDetails.hidden = true;
@@ -1395,6 +1463,7 @@
     }
 
     function renderPreview(preview) {
+      hideInviteLoading();
       const title = getInviteTitle(preview);
       const locationName = preview.locationName || preview.destination || preview.location || "";
       const locationAddress = preview.locationAddress || preview.address || "";
@@ -1410,6 +1479,7 @@
       previewSubtitle.textContent = "";
       document.title = title;
       currentPreviewData = preview;
+      setOpenAppLink();
       if (preview.organizerDisplayName) {
         currentOrganizerName = preview.organizerDisplayName;
       }
@@ -1508,6 +1578,7 @@
 
     function showJoinedState(options = {}) {
       const { restoreFromStorage = false, participantData = null } = options;
+      hideInviteLoading();
       setJoinControlsVisible(false);
       joinedState.hidden = true;
       statusSection.hidden = false;
@@ -1547,6 +1618,7 @@
 
     function showLeftState(options = {}) {
       const { saveState = true } = options;
+      hideInviteLoading();
       currentBrowserParticipantLeft = true;
       currentBrowserParticipantStatus = "private";
       stopPeopleListeners();
@@ -1816,7 +1888,7 @@
     setJoinControlsVisible(false);
     joinedState.hidden = true;
     statusSection.hidden = true;
-    setOpenAppLink();
+    showInviteLoading();
     loadPreview();
   </script>
 </body>
