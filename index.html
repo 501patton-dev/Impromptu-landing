@@ -309,15 +309,105 @@
     }
 
     .beta-link {
+      appearance: none;
+      border: 0;
+      padding: 0;
+      background: transparent;
       color: rgba(216, 207, 252, 0.9);
+      font: inherit;
       font-weight: 600;
       text-decoration: none;
+      cursor: pointer;
     }
 
     .beta-link:hover,
     .beta-link:focus-visible {
       color: #e9ddff;
       text-decoration: underline;
+    }
+
+    .beta-form {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(151, 132, 255, 0.12);
+      display: grid;
+      gap: 10px;
+    }
+
+    .beta-form[hidden] {
+      display: none;
+    }
+
+    .beta-field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .beta-label {
+      color: rgba(244, 242, 255, 0.68);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .beta-input {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid rgba(185, 170, 255, 0.48);
+      border-radius: 10px;
+      padding: 12px 13px;
+      background: rgba(8, 5, 35, 0.64);
+      color: var(--text-primary);
+      font-size: 15px;
+      outline: none;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+    }
+
+    textarea.beta-input {
+      min-height: 82px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+
+    .beta-input:focus {
+      border-color: rgba(201, 186, 255, 0.88);
+      box-shadow: 0 0 0 3px rgba(157, 130, 244, 0.14);
+    }
+
+    .beta-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .beta-submit {
+      min-height: 42px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+    }
+
+    .beta-cancel {
+      min-height: 42px;
+    }
+
+    .beta-message {
+      margin: 12px 0 0;
+      color: rgba(244, 242, 255, 0.62);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .beta-message[hidden] {
+      display: none;
+    }
+
+    .beta-message.error {
+      color: #ffb5b5;
+    }
+
+    .beta-message.success {
+      color: #d8f4df;
     }
 
     .button:active {
@@ -812,16 +902,62 @@
           </div>
         </div>
 
-        <p class="beta-request">
+        <p class="beta-request" id="betaRequestPrompt">
           <span>Want to organize your own?</span>
-          <a
+          <button
             class="beta-link"
-            href="mailto:YOUR_EMAIL@example.com?subject=Impromptu%20beta%20access&body=Hi%20Levi%2C%20I%27d%20like%20to%20try%20organizing%20with%20Impromptu."
-            title="Replace the placeholder email before sharing"
+            id="betaRequestToggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="betaRequestForm"
           >
             Request beta access
-          </a>
+          </button>
         </p>
+
+        <form class="beta-form" id="betaRequestForm" hidden novalidate>
+          <div class="beta-field">
+            <label class="beta-label" for="betaNameInput">Name</label>
+            <input
+              class="beta-input"
+              id="betaNameInput"
+              name="name"
+              type="text"
+              maxlength="80"
+              autocomplete="name"
+            />
+          </div>
+
+          <div class="beta-field">
+            <label class="beta-label" for="betaContactInput">Contact info</label>
+            <input
+              class="beta-input"
+              id="betaContactInput"
+              name="contact"
+              type="text"
+              maxlength="120"
+              autocomplete="email"
+            />
+          </div>
+
+          <div class="beta-field">
+            <label class="beta-label" for="betaNoteInput">Note</label>
+            <textarea
+              class="beta-input"
+              id="betaNoteInput"
+              name="note"
+              maxlength="500"
+              placeholder="What would you use Impromptu for?"
+            ></textarea>
+          </div>
+
+          <div class="beta-actions">
+            <button class="button primary beta-submit" id="betaRequestSubmit" type="submit">Send request</button>
+            <button class="beta-link beta-cancel" id="betaRequestCancel" type="button">Cancel</button>
+          </div>
+        </form>
+
+        <p class="beta-message" id="betaRequestMessage" role="status" hidden></p>
       </div>
 
       <footer class="footer">
@@ -833,8 +969,8 @@
   </main>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
@@ -863,6 +999,15 @@
     const noteContent = document.getElementById("noteContent");
     const peopleSection = document.getElementById("peopleSection");
     const peopleList = document.getElementById("peopleList");
+    const betaRequestPrompt = document.getElementById("betaRequestPrompt");
+    const betaRequestToggle = document.getElementById("betaRequestToggle");
+    const betaRequestForm = document.getElementById("betaRequestForm");
+    const betaNameInput = document.getElementById("betaNameInput");
+    const betaContactInput = document.getElementById("betaContactInput");
+    const betaNoteInput = document.getElementById("betaNoteInput");
+    const betaRequestSubmit = document.getElementById("betaRequestSubmit");
+    const betaRequestCancel = document.getElementById("betaRequestCancel");
+    const betaRequestMessage = document.getElementById("betaRequestMessage");
 
     const pathParts = window.location.pathname.split("/").filter(Boolean);
     const pathHangoutId = pathParts[pathParts.length - 1];
@@ -870,6 +1015,7 @@
     const searchParams = new URLSearchParams(window.location.search);
     const queryHangoutId = searchParams.get("id");
     const inviteToken = searchParams.get("invite");
+    const inviteId = searchParams.get("inviteId") || searchParams.get("invite_id") || inviteToken || "";
     const hangoutId = queryHangoutId || pathHangoutId;
     const firebaseConfig = {
       apiKey: "AIzaSyAcEDXDzEuakzTl82aPoP2fWIPNA1DwhUc",
@@ -898,6 +1044,127 @@
     let currentBrowserParticipantLeft = false;
     let joinedStateStorageKey = "impromptu-browser-joined";
     let statusWindowTimer = null;
+    let betaRequestSubmitted = false;
+
+    function getFirebaseApp() {
+      const existingApps = getApps();
+      return existingApps.length ? existingApps[0] : initializeApp(firebaseConfig);
+    }
+
+    function getBetaRequestDb() {
+      if (!db) {
+        db = getFirestore(getFirebaseApp());
+      }
+
+      return db;
+    }
+
+    function setBetaRequestMessage(message, isError = false) {
+      betaRequestMessage.textContent = message;
+      betaRequestMessage.hidden = message.length === 0;
+      betaRequestMessage.classList.toggle("error", isError);
+      betaRequestMessage.classList.toggle("success", !isError && message.length > 0);
+    }
+
+    function openBetaRequestForm() {
+      if (betaRequestSubmitted) {
+        return;
+      }
+
+      betaRequestForm.hidden = false;
+      betaRequestToggle.setAttribute("aria-expanded", "true");
+      setBetaRequestMessage("");
+      betaNameInput.focus();
+    }
+
+    function closeBetaRequestForm() {
+      betaRequestForm.hidden = true;
+      betaRequestToggle.setAttribute("aria-expanded", "false");
+      setBetaRequestMessage("");
+    }
+
+    function validateBetaRequestForm() {
+      const name = betaNameInput.value.trim();
+      const contact = betaContactInput.value.trim();
+      const note = betaNoteInput.value.trim();
+
+      if (!name) {
+        return { message: "Please enter your name." };
+      }
+
+      if (name.length > 80) {
+        return { message: "Please keep your name under 80 characters." };
+      }
+
+      if (!contact) {
+        return { message: "Please enter an email or phone number." };
+      }
+
+      if (contact.length > 120) {
+        return { message: "Please keep your contact info under 120 characters." };
+      }
+
+      if (note.length > 500) {
+        return { message: "Please keep your note under 500 characters." };
+      }
+
+      return { name, contact, note };
+    }
+
+    async function submitBetaRequest() {
+      if (betaRequestSubmitted) {
+        return;
+      }
+
+      const validation = validateBetaRequestForm();
+
+      if (validation.message) {
+        setBetaRequestMessage(validation.message, true);
+        return;
+      }
+
+      betaRequestSubmit.disabled = true;
+      betaRequestSubmit.textContent = "Sending...";
+      setBetaRequestMessage("Sending request...");
+
+      try {
+        const payload = {
+          name: validation.name,
+          contact: validation.contact,
+          note: validation.note,
+          source: "web-participant",
+          createdAt: serverTimestamp(),
+          status: "new"
+        };
+
+        if (inviteId) {
+          payload.inviteId = inviteId;
+        }
+
+        if (hangoutId && hangoutId !== "hangout") {
+          payload.hangoutId = hangoutId;
+        }
+
+        await addDoc(collection(getBetaRequestDb(), "betaRequests"), payload);
+
+        betaRequestSubmitted = true;
+        betaRequestForm.reset();
+        betaRequestForm.hidden = true;
+        betaRequestPrompt.hidden = true;
+        betaRequestToggle.disabled = true;
+        betaRequestToggle.setAttribute("aria-expanded", "false");
+        setBetaRequestMessage("Request received. We’ll reach out when more organizer spots are available.");
+      } catch (error) {
+        console.error("[beta request] submit error", {
+          code: error?.code,
+          message: error?.message
+        });
+        setBetaRequestMessage("Couldn’t send that request right now. Please try again.", true);
+      } finally {
+        betaRequestSubmit.disabled = betaRequestSubmitted;
+        betaRequestSubmit.textContent = "Send request";
+      }
+    }
 
     function setNote(message) {
       inviteNote.hidden = false;
@@ -1881,7 +2148,7 @@
       }
 
       try {
-        const app = initializeApp(firebaseConfig);
+        const app = getFirebaseApp();
         db = getFirestore(app);
         auth = getAuth(app);
         functions = getFunctions(app, functionsRegion);
@@ -1943,6 +2210,23 @@
         leaveButton.disabled = false;
         leaveButton.textContent = "Leave hangout";
       }
+    });
+
+    betaRequestToggle.addEventListener("click", function () {
+      if (betaRequestForm.hidden) {
+        openBetaRequestForm();
+      } else {
+        closeBetaRequestForm();
+      }
+    });
+
+    betaRequestCancel.addEventListener("click", function () {
+      closeBetaRequestForm();
+    });
+
+    betaRequestForm.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      await submitBetaRequest();
     });
 
     joinButton.addEventListener("click", async function () {
