@@ -464,6 +464,21 @@
       cursor: wait;
     }
 
+    .status-button[aria-disabled="true"] {
+      opacity: 0.48;
+      cursor: not-allowed;
+      border-color: rgba(157, 130, 244, 0.2);
+      background: rgba(8, 5, 35, 0.46);
+      color: rgba(244, 242, 255, 0.58);
+      box-shadow: none;
+    }
+
+    .status-button[aria-disabled="true"].active {
+      border-color: rgba(157, 130, 244, 0.2);
+      background: rgba(8, 5, 35, 0.46);
+      box-shadow: none;
+    }
+
     .status-message {
       margin: 0;
       font-size: 14px;
@@ -737,8 +752,8 @@
 
         <div class="status-section" id="statusSection" hidden>
           <div class="status-section-title">Your status</div>
-          <p class="status-section-copy">Let others know where you are.</p>
-          <div class="status-grid">
+          <p class="status-section-copy" id="statusSectionCopy">Let others know where you are.</p>
+          <div class="status-grid" id="statusGrid">
             <button class="status-button" type="button" data-status="headingOut">Heading out</button>
             <button class="status-button" type="button" data-status="close">I’m close</button>
             <button class="status-button" type="button" data-status="arrived">I arrived</button>
@@ -837,6 +852,8 @@
     const joinButton = document.getElementById("joinButton");
     const joinMessage = document.getElementById("joinMessage");
     const statusSection = document.getElementById("statusSection");
+    const statusSectionCopy = document.getElementById("statusSectionCopy");
+    const statusGrid = document.getElementById("statusGrid");
     const statusButtons = Array.from(document.querySelectorAll(".status-button"));
     const statusMessage = document.getElementById("statusMessage");
     const joinedStateText = document.getElementById("joinedStateText");
@@ -880,6 +897,7 @@
     let currentBrowserParticipantStatus = "private";
     let currentBrowserParticipantLeft = false;
     let joinedStateStorageKey = "impromptu-browser-joined";
+    let statusWindowTimer = null;
 
     function setNote(message) {
       inviteNote.hidden = false;
@@ -1147,6 +1165,7 @@
     function renderPeopleSection() {
       const entries = [];
       const seen = new Set();
+      const statusWindowOpen = isStatusWindowOpen(currentPreviewData);
       const hostParticipantEntry = currentPeopleEntries.find((entry) => {
         const entryId = entry?.id || entry?.participantId || entry?.uid || entry?.userId || "";
         const normalizedName = (entry?.displayName || "").trim().toLowerCase();
@@ -1161,7 +1180,7 @@
         entries.push({
           id: hostParticipantEntry.id || currentOrganizerId || `organizer:${currentOrganizerName}`,
           displayName: getPersonName(hostParticipantEntry) || currentOrganizerName || "Host",
-          status: getPersonStatus(hostParticipantEntry),
+          status: statusWindowOpen ? getPersonStatus(hostParticipantEntry) : "Private",
           isOrganizer: true,
           roleLabel: "Host"
         });
@@ -1170,7 +1189,7 @@
         entries.push({
           id: currentOrganizerId || `organizer:${currentOrganizerName}`,
           displayName: currentOrganizerName,
-          status: getStatusLabel(currentOrganizerStatus),
+          status: statusWindowOpen ? getStatusLabel(currentOrganizerStatus) : "Private",
           isOrganizer: true,
           roleLabel: "Host"
         });
@@ -1206,7 +1225,7 @@
         entries.push({
           id: entryId || `participant:${entries.length}`,
           displayName: getPersonName(entry),
-          status: getPersonStatus(entry),
+          status: statusWindowOpen ? getPersonStatus(entry) : "Private",
           isOrganizer: false,
           roleLabel: ""
         });
@@ -1218,7 +1237,7 @@
           entries.push({
             id: browserId,
             displayName: currentBrowserParticipantName || "Participant",
-            status: getStatusLabel(currentBrowserParticipantStatus),
+            status: statusWindowOpen ? getStatusLabel(currentBrowserParticipantStatus) : "Private",
             isOrganizer: false,
             roleLabel: ""
           });
@@ -1291,6 +1310,19 @@
         } else if (currentPreviewData?.organizerStatus || currentPreviewData?.hostStatus) {
           currentOrganizerStatus = normalizeParticipantStatus(currentPreviewData.organizerStatus || currentPreviewData.hostStatus);
         }
+        if (hangoutData && currentPreviewData) {
+          const timingKeys = ["statusSharingIsActive", "startAt", "startTime", "startsAt", "start", "when", "scheduledAt"];
+          const timingUpdates = {};
+          timingKeys.forEach((key) => {
+            if (hangoutData[key] !== undefined) {
+              timingUpdates[key] = hangoutData[key];
+            }
+          });
+          currentPreviewData = {
+            ...currentPreviewData,
+            ...timingUpdates
+          };
+        }
 
         const hangoutStatus = hangoutData?.status || currentPreviewData?.status || "active";
         if (isUnavailableHangoutStatus(hangoutStatus)) {
@@ -1298,6 +1330,10 @@
           return;
         }
 
+        scheduleStatusWindowRefresh(currentPreviewData);
+        if (!statusSection.hidden) {
+          setStatusControlsAvailable(isStatusWindowOpen(currentPreviewData));
+        }
         renderPeopleSection();
       });
     }
@@ -1385,6 +1421,95 @@
       }).format(date);
     }
 
+    function getPreviewStartTimeValue(preview) {
+      return preview?.startAt
+        || preview?.startTime
+        || preview?.startsAt
+        || preview?.start
+        || preview?.when
+        || preview?.scheduledAt;
+    }
+
+    function isStatusWindowOpen(preview) {
+      if (preview?.statusSharingIsActive === true) {
+        return true;
+      }
+
+      if (preview?.statusSharingIsActive === false) {
+        return false;
+      }
+
+      const startTime = getDateValue(getPreviewStartTimeValue(preview));
+      if (!startTime) {
+        return true;
+      }
+
+      const oneHourBeforeStart = startTime.getTime() - (60 * 60 * 1000);
+      return Date.now() >= oneHourBeforeStart;
+    }
+
+    function getStatusWindowOpenTime(preview) {
+      const startTime = getDateValue(getPreviewStartTimeValue(preview));
+      if (!startTime) {
+        return null;
+      }
+
+      return new Date(startTime.getTime() - (60 * 60 * 1000));
+    }
+
+    function getStatusWindowCopy(preview) {
+      const openTime = getStatusWindowOpenTime(preview);
+      const formattedOpenTime = openTime ? formatDate(openTime) : "";
+      return formattedOpenTime
+        ? `Your status is private for now. Status updates open at ${formattedOpenTime}. Come back when you’re headed out.`
+        : "Your status is private for now. Come back when you’re headed out.";
+    }
+
+    function setStatusControlsAvailable(isAvailable) {
+      statusGrid.hidden = false;
+      statusButtons.forEach((button) => {
+        button.disabled = false;
+        button.setAttribute("aria-disabled", isAvailable ? "false" : "true");
+      });
+      statusSectionCopy.textContent = isAvailable
+        ? "Let others know where you are."
+        : getStatusWindowCopy(currentPreviewData);
+    }
+
+    function scheduleStatusWindowRefresh(preview) {
+      if (statusWindowTimer) {
+        clearTimeout(statusWindowTimer);
+        statusWindowTimer = null;
+      }
+
+      const startTime = getDateValue(getPreviewStartTimeValue(preview));
+      if (!startTime || preview?.statusSharingIsActive === false || isStatusWindowOpen(preview)) {
+        return;
+      }
+
+      const oneHourBeforeStart = startTime.getTime() - (60 * 60 * 1000);
+      const delay = oneHourBeforeStart - Date.now();
+      if (delay <= 0 || delay > 2147483647) {
+        return;
+      }
+
+      statusWindowTimer = window.setTimeout(() => {
+        statusWindowTimer = null;
+        if (!currentBrowserParticipantLeft && !statusSection.hidden) {
+          setStatusControlsAvailable(true);
+          renderPeopleSection();
+          setStatusMessage("");
+        }
+      }, delay);
+    }
+
+    function clearStatusWindowRefresh() {
+      if (statusWindowTimer) {
+        clearTimeout(statusWindowTimer);
+        statusWindowTimer = null;
+      }
+    }
+
     function getInviteTitle(preview) {
       const organizerDisplayName = preview.organizerDisplayName || "";
       const activityInvitePhrase = preview.activityInvitePhrase || "";
@@ -1446,7 +1571,26 @@
       );
     }
 
+    function isStatusWindowError(error) {
+      const errorText = [error?.code, error?.message, error?.details]
+        .filter(Boolean)
+        .map((value) => String(value))
+        .join(" ")
+        .toLowerCase();
+
+      return Boolean(
+        errorText.includes("too early")
+        || errorText.includes("status window")
+        || errorText.includes("coordination window")
+        || errorText.includes("1 hour")
+        || errorText.includes("one hour")
+        || errorText.includes("before start")
+        || errorText.includes("status sharing")
+      );
+    }
+
     function setPreviewUnavailable(message) {
+      clearStatusWindowRefresh();
       hideInviteLoading();
       previewTitle.textContent = "The invite preview is unavailable.";
       previewSubtitle.textContent = "Open Impromptu to continue.";
@@ -1467,7 +1611,7 @@
       const title = getInviteTitle(preview);
       const locationName = preview.locationName || preview.destination || preview.location || "";
       const locationAddress = preview.locationAddress || preview.address || "";
-      const startTimeValue = preview.startTime || preview.startsAt || preview.start || preview.when || preview.scheduledAt;
+      const startTimeValue = getPreviewStartTimeValue(preview);
       const formattedStartTime = formatDate(startTimeValue);
       const coordinates = preview.latitude != null && preview.longitude != null
         ? `${preview.latitude}, ${preview.longitude}`
@@ -1511,6 +1655,7 @@
       }
 
       if (isPreviewEnded(preview)) {
+        clearStatusWindowRefresh();
         previewTitle.textContent = "This hangout has ended.";
         previewSubtitle.textContent = "This invite is no longer active.";
         previewDetails.hidden = true;
@@ -1527,6 +1672,7 @@
       }
 
       if (isPreviewExpired(preview)) {
+        clearStatusWindowRefresh();
         previewTitle.textContent = "This invite has expired.";
         previewSubtitle.textContent = "Ask the organizer to send you a new invite.";
         previewDetails.hidden = true;
@@ -1542,7 +1688,14 @@
         return;
       }
 
-      const canJoin = preview.status === "active" && !isPreviewExpired(preview) && !isPreviewEnded(preview) && Boolean(inviteToken);
+      scheduleStatusWindowRefresh(preview);
+
+      if (inviteToken) {
+        startPeopleListeners();
+      }
+
+      const canJoin = !isPreviewUnavailableState(preview) && Boolean(inviteToken);
+      const previewStatusWindowOpen = isStatusWindowOpen(preview);
       const detailParts = [];
       if (debugModeEnabled) {
         if (statusText) {
@@ -1560,14 +1713,17 @@
         setJoinControlsVisible(true);
         joinedState.hidden = true;
         statusSection.hidden = true;
-        clearPeopleSection();
-        setNote(detailParts.length ? detailParts.join(" • ") : "Enter your display name to join this hangout from your browser.");
+        setNote(detailParts.length ? detailParts.join(" • ") : (previewStatusWindowOpen
+          ? "Join now to let the host know you’re in."
+          : "Join now to let the host know you’re in. Status updates open 1 hour before this starts."));
         setJoinMessage("");
       } else {
         setJoinControlsVisible(false);
         joinedState.hidden = true;
         statusSection.hidden = true;
-        clearPeopleSection();
+        if (!inviteToken) {
+          clearPeopleSection();
+        }
         if (!inviteToken) {
           setNote("This link doesn’t include a join token, so browser joining isn’t available here.");
         } else {
@@ -1601,13 +1757,22 @@
       const locationAddress = currentPreviewData?.locationAddress || currentPreviewData?.address || "";
       const locationText = getLocationSummary(locationName, locationAddress);
       const joinedTitle = getJoinedTitle(currentOrganizerName, activityText);
+      const statusWindowOpen = isStatusWindowOpen(currentPreviewData);
+
+      scheduleStatusWindowRefresh(currentPreviewData);
+
+      if (!statusWindowOpen) {
+        currentBrowserParticipantStatus = "private";
+        setSelectedStatus("private");
+      }
 
       previewTitle.textContent = joinedTitle;
       previewSubtitle.textContent = locationText;
-      previewTime.textContent = formatDate(currentPreviewData?.startTime || currentPreviewData?.startsAt || currentPreviewData?.start || currentPreviewData?.when || currentPreviewData?.scheduledAt) || "—";
+      previewTime.textContent = formatDate(getPreviewStartTimeValue(currentPreviewData)) || "—";
       previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
       previewDetails.hidden = !(previewTime.textContent !== "—" || locationName || locationAddress);
 
+      setStatusControlsAvailable(statusWindowOpen);
       setStatusMessage("");
       joinedStateText.textContent = "";
       joinedState.classList.toggle("success", true);
@@ -1618,6 +1783,7 @@
 
     function showLeftState(options = {}) {
       const { saveState = true } = options;
+      clearStatusWindowRefresh();
       hideInviteLoading();
       currentBrowserParticipantLeft = true;
       currentBrowserParticipantStatus = "private";
@@ -1842,6 +2008,15 @@
           return;
         }
 
+        if (!isStatusWindowOpen(currentPreviewData)) {
+          currentBrowserParticipantStatus = "private";
+          setSelectedStatus("private");
+          setStatusControlsAvailable(false);
+          renderPeopleSection();
+          setStatusMessage(getStatusWindowCopy(currentPreviewData));
+          return;
+        }
+
         statusButtons.forEach((candidate) => {
           candidate.disabled = true;
         });
@@ -1876,11 +2051,18 @@
             }
           }
 
+          if (isStatusWindowError(error) || !isStatusWindowOpen(currentPreviewData)) {
+            currentBrowserParticipantStatus = "private";
+            setSelectedStatus("private");
+            setStatusControlsAvailable(false);
+            renderPeopleSection();
+            setStatusMessage(getStatusWindowCopy(currentPreviewData));
+            return;
+          }
+
           setStatusMessage("Couldn’t update your status right now.", true);
         } finally {
-          statusButtons.forEach((candidate) => {
-            candidate.disabled = false;
-          });
+          setStatusControlsAvailable(isStatusWindowOpen(currentPreviewData));
         }
       });
     });
