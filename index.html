@@ -929,14 +929,16 @@
           </div>
 
           <div class="beta-field">
-            <label class="beta-label" for="betaContactInput">Contact info</label>
+            <label class="beta-label" for="betaContactInput">Email</label>
             <input
               class="beta-input"
               id="betaContactInput"
               name="contact"
-              type="text"
+              type="email"
               maxlength="120"
               autocomplete="email"
+              inputmode="email"
+              placeholder="you@example.com"
             />
           </div>
 
@@ -1097,11 +1099,15 @@
       }
 
       if (!contact) {
-        return { message: "Please enter an email or phone number." };
+        return { message: "Please enter your email." };
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) {
+        return { message: "Please enter a valid email address." };
       }
 
       if (contact.length > 120) {
-        return { message: "Please keep your contact info under 120 characters." };
+        return { message: "Please keep your email under 120 characters." };
       }
 
       if (note.length > 500) {
