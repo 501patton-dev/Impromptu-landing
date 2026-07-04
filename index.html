@@ -847,7 +847,7 @@
             <button class="status-button" type="button" data-status="headingOut">Heading out</button>
             <button class="status-button" type="button" data-status="close">I’m close</button>
             <button class="status-button" type="button" data-status="arrived">I arrived</button>
-            <button class="status-button" type="button" data-status="private">Go private</button>
+            <button class="status-button" type="button" data-status="private">Radio silent</button>
           </div>
           <button class="button tertiary leave-button" id="leaveButton" type="button">Leave hangout</button>
           <p class="status-message" id="statusMessage" role="status"></p>
@@ -973,7 +973,7 @@
   <script type="module">
     import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getAuth, signInAnonymously, setPersistence, browserLocalPersistence, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
     const openButton = document.getElementById("openButton");
@@ -1047,10 +1047,45 @@
     let joinedStateStorageKey = "impromptu-browser-joined";
     let statusWindowTimer = null;
     let betaRequestSubmitted = false;
+    let pendingStatusUpdate = "";
+    let authPersistencePromise = null;
 
     function getFirebaseApp() {
       const existingApps = getApps();
       return existingApps.length ? existingApps[0] : initializeApp(firebaseConfig);
+    }
+
+    async function configureAuthPersistence() {
+      if (!auth) {
+        return;
+      }
+
+      if (!authPersistencePromise) {
+        authPersistencePromise = setPersistence(auth, browserLocalPersistence).catch((error) => {
+          console.warn("[join debug] auth persistence setup failed", {
+            code: error?.code,
+            message: error?.message
+          });
+        });
+      }
+
+      await authPersistencePromise;
+    }
+
+    function waitForAuthReady() {
+      if (!auth) {
+        return Promise.resolve(null);
+      }
+
+      return new Promise((resolve) => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+          unsubscribe();
+          resolve(user);
+        }, () => {
+          unsubscribe();
+          resolve(auth.currentUser || null);
+        });
+      });
     }
 
     function getBetaRequestDb() {
@@ -1215,6 +1250,10 @@
       });
     }
 
+    function getCurrentStatusCopy(status = currentBrowserParticipantStatus) {
+      return `Your status: ${getStatusLabel(status)}.`;
+    }
+
     function normalizeParticipantStatus(status) {
       // Keep raw status values aligned with the iOS/backend canonical strings.
       const rawStatus = String(status || "").trim();
@@ -1244,7 +1283,7 @@
           return "I arrived";
         case "private":
         default:
-          return "Private";
+          return "Radio silent";
       }
     }
 
@@ -1317,54 +1356,76 @@
       localStorage.setItem(getJoinedStateStorageKey(), JSON.stringify(state));
     }
 
+    async function restoreParticipantIdentity(participantId, displayName = "") {
+      if (!db || !participantId) {
+        return { status: "not-joined" };
+      }
+
+      const participantDoc = await getDoc(doc(db, "hangouts", hangoutId, "participants", participantId));
+      if (!participantDoc.exists()) {
+        return { status: "retry", reason: "participant-doc-missing" };
+      }
+
+      const participantData = participantDoc.data();
+      currentBrowserParticipantId = participantId;
+      currentBrowserParticipantName = displayName || getPersonName(participantData) || "Participant";
+      currentBrowserParticipantStatus = normalizeParticipantStatus(participantData?.status || "private");
+      displayNameInput.value = currentBrowserParticipantName;
+
+      if (!isParticipantActive(participantData)) {
+        clearJoinedState();
+        showLeftState({ saveState: false });
+        return { status: "left" };
+      }
+
+      showJoinedState({ restoreFromStorage: true, participantData });
+      return { status: "restored" };
+    }
+
     async function restoreJoinedState() {
       if (!hangoutId || hangoutId === "hangout") {
-        return false;
+        return { status: "not-joined" };
       }
 
       const storedStateText = localStorage.getItem(getJoinedStateStorageKey());
-      if (!storedStateText) {
-        return false;
-      }
+      let storedState = null;
+      let attemptedAuthFallback = false;
 
       try {
-        const storedState = JSON.parse(storedStateText);
-        if (!storedState?.participantId) {
+        if (storedStateText) {
+          storedState = JSON.parse(storedStateText);
+        }
+
+        if (storedState?.left) {
           clearJoinedState();
-          return false;
-        }
-
-        if (!db) {
-          return false;
-        }
-
-        const participantDoc = await getDoc(doc(db, "hangouts", hangoutId, "participants", storedState.participantId));
-        if (!participantDoc.exists()) {
-          clearJoinedState();
-          return false;
-        }
-
-        const participantData = participantDoc.data();
-        currentBrowserParticipantId = storedState.participantId;
-        currentBrowserParticipantName = storedState.displayName || getPersonName(participantData) || "Participant";
-        currentBrowserParticipantStatus = normalizeParticipantStatus(participantData?.status || "private");
-        displayNameInput.value = currentBrowserParticipantName;
-
-        if (storedState?.left || !isParticipantActive(participantData)) {
           showLeftState({ saveState: false });
-          return true;
+          return { status: "left" };
         }
 
-        showJoinedState({ restoreFromStorage: true, participantData });
-        return true;
+        if (storedState?.participantId) {
+          return await restoreParticipantIdentity(storedState.participantId, storedState.displayName || "");
+        }
+
+        await waitForAuthReady();
+
+        if (auth?.currentUser?.uid) {
+          attemptedAuthFallback = true;
+          const authRestoreResult = await restoreParticipantIdentity(auth.currentUser.uid);
+          return authRestoreResult.status === "retry"
+            ? { status: "not-joined" }
+            : authRestoreResult;
+        }
+
+        return { status: "not-joined" };
       } catch (error) {
         console.error("[join debug] restore joined state error", {
           code: error?.code,
           message: error?.message,
           details: error?.details
         });
-        clearJoinedState();
-        return false;
+        return storedStateText || attemptedAuthFallback
+          ? { status: "retry", reason: "restore-error" }
+          : { status: "not-joined" };
       }
     }
 
@@ -1453,7 +1514,7 @@
         entries.push({
           id: hostParticipantEntry.id || currentOrganizerId || `organizer:${currentOrganizerName}`,
           displayName: getPersonName(hostParticipantEntry) || currentOrganizerName || "Host",
-          status: statusWindowOpen ? getPersonStatus(hostParticipantEntry) : "Private",
+          status: statusWindowOpen ? getPersonStatus(hostParticipantEntry) : "Radio silent",
           isOrganizer: true,
           roleLabel: "Host"
         });
@@ -1462,7 +1523,7 @@
         entries.push({
           id: currentOrganizerId || `organizer:${currentOrganizerName}`,
           displayName: currentOrganizerName,
-          status: statusWindowOpen ? getStatusLabel(currentOrganizerStatus) : "Private",
+          status: statusWindowOpen ? getStatusLabel(currentOrganizerStatus) : "Radio silent",
           isOrganizer: true,
           roleLabel: "Host"
         });
@@ -1498,7 +1559,9 @@
         entries.push({
           id: entryId || `participant:${entries.length}`,
           displayName: getPersonName(entry),
-          status: statusWindowOpen ? getPersonStatus(entry) : "Private",
+          status: statusWindowOpen && pendingStatusUpdate && currentBrowserParticipantId && String(entryId) === String(currentBrowserParticipantId)
+            ? getStatusLabel(pendingStatusUpdate)
+            : (statusWindowOpen ? getPersonStatus(entry) : "Radio silent"),
           isOrganizer: false,
           roleLabel: ""
         });
@@ -1510,7 +1573,7 @@
           entries.push({
             id: browserId,
             displayName: currentBrowserParticipantName || "Participant",
-            status: statusWindowOpen ? getStatusLabel(currentBrowserParticipantStatus) : "Private",
+            status: statusWindowOpen ? getStatusLabel(currentBrowserParticipantStatus) : "Radio silent",
             isOrganizer: false,
             roleLabel: ""
           });
@@ -1534,7 +1597,7 @@
       entries.forEach((entry) => {
         const label = entry.isOrganizer ? "Host" : entry.roleLabel;
         const statusText = entry.isOrganizer && entry.status && entry.status !== "Host" ? entry.status : entry.status;
-        const metaText = label && statusText && statusText !== "Host" ? `${label} · ${statusText}` : (label || statusText || "Private");
+        const metaText = label && statusText && statusText !== "Host" ? `${label} · ${statusText}` : (label || statusText || "Radio silent");
 
         const row = document.createElement("div");
         row.className = "people-row";
@@ -1565,6 +1628,22 @@
           id: docSnapshot.id,
           ...docSnapshot.data()
         }));
+        const currentParticipantEntry = currentPeopleEntries.find((entry) => (
+          currentBrowserParticipantId
+          && String(entry?.id || entry?.participantId || entry?.uid || entry?.userId || "") === String(currentBrowserParticipantId)
+        ));
+        if (currentParticipantEntry) {
+          const snapshotStatus = normalizeParticipantStatus(currentParticipantEntry.status || currentParticipantEntry.currentStatus);
+          if (!pendingStatusUpdate) {
+            currentBrowserParticipantStatus = snapshotStatus;
+            setSelectedStatus(currentBrowserParticipantStatus);
+            if (!statusSection.hidden && isStatusWindowOpen(currentPreviewData)) {
+              setStatusControlsAvailable(true);
+            }
+          } else if (snapshotStatus === pendingStatusUpdate) {
+            pendingStatusUpdate = "";
+          }
+        }
         renderPeopleSection();
       });
 
@@ -1734,8 +1813,8 @@
       const openTime = getStatusWindowOpenTime(preview);
       const formattedOpenTime = openTime ? formatDate(openTime) : "";
       return formattedOpenTime
-        ? `Your status is private for now. Status updates open at ${formattedOpenTime}. Come back when you’re headed out.`
-        : "Your status is private for now. Come back when you’re headed out.";
+        ? `You’re radio silent for now. Status updates open at ${formattedOpenTime}. Come back when you’re headed out.`
+        : "You’re radio silent for now. Come back when you’re headed out.";
     }
 
     function setStatusControlsAvailable(isAvailable) {
@@ -1745,7 +1824,7 @@
         button.setAttribute("aria-disabled", isAvailable ? "false" : "true");
       });
       statusSectionCopy.textContent = isAvailable
-        ? "Let others know where you are."
+        ? getCurrentStatusCopy()
         : getStatusWindowCopy(currentPreviewData);
     }
 
@@ -1875,11 +1954,27 @@
       statusSection.hidden = true;
       clearPeopleSection();
       stopPeopleListeners();
-      clearJoinedState();
       setNote(message);
     }
 
-    function renderPreview(preview) {
+    function showRestoringSessionState() {
+      setJoinControlsVisible(false);
+      joinedState.hidden = true;
+      statusSection.hidden = true;
+      setNote("Restoring your session...");
+      setJoinMessage("");
+    }
+
+    function showRestoreRetryState() {
+      setJoinControlsVisible(false);
+      joinedState.hidden = true;
+      statusSection.hidden = true;
+      setNote("We couldn’t restore your session just now. Refresh when you’re back online and we’ll try again.");
+      setJoinMessage("");
+    }
+
+    function renderPreview(preview, options = {}) {
+      const { deferJoinUntilRestore = false } = options;
       hideInviteLoading();
       const title = getInviteTitle(preview);
       const locationName = preview.locationName || preview.destination || preview.location || "";
@@ -1982,6 +2077,11 @@
         }
       }
 
+      if (deferJoinUntilRestore) {
+        showRestoringSessionState();
+        return;
+      }
+
       if (canJoin) {
         setJoinControlsVisible(true);
         joinedState.hidden = true;
@@ -2079,7 +2179,7 @@
       startLeftStateHangoutListener();
 
       if (saveState) {
-        saveLeftState();
+        clearJoinedState();
       }
     }
 
@@ -2157,6 +2257,7 @@
         const app = getFirebaseApp();
         db = getFirestore(app);
         auth = getAuth(app);
+        await configureAuthPersistence();
         functions = getFunctions(app, functionsRegion);
         console.log("[join debug] functions region configured:", functionsRegion);
 
@@ -2166,11 +2267,13 @@
           if (preserveCurrentState && !isPreviewUnavailableState(preview)) {
             return preview;
           }
-          renderPreview(preview);
+          renderPreview(preview, { deferJoinUntilRestore: true });
           if (!isPreviewUnavailableState(preview)) {
-            const restored = await restoreJoinedState();
-            if (!restored) {
-              clearJoinedState();
+            const restoreResult = await restoreJoinedState();
+            if (restoreResult.status === "not-joined") {
+              renderPreview(preview);
+            } else if (restoreResult.status === "retry") {
+              showRestoreRetryState();
             }
           }
           return preview;
@@ -2292,7 +2395,7 @@
 
     statusButtons.forEach((button) => {
       button.addEventListener("click", async function () {
-        const status = button.dataset.status;
+        const status = normalizeParticipantStatus(button.dataset.status);
         if (!auth || !functions || !hangoutId) {
           setStatusMessage("Couldn’t update your status right now.", true);
           return;
@@ -2300,6 +2403,7 @@
 
         if (!isStatusWindowOpen(currentPreviewData)) {
           currentBrowserParticipantStatus = "private";
+          pendingStatusUpdate = "";
           setSelectedStatus("private");
           setStatusControlsAvailable(false);
           renderPeopleSection();
@@ -2307,10 +2411,17 @@
           return;
         }
 
+        const previousStatus = normalizeParticipantStatus(currentBrowserParticipantStatus);
+        currentBrowserParticipantStatus = status;
+        pendingStatusUpdate = status;
+        setSelectedStatus(status);
+        setStatusControlsAvailable(true);
+        renderPeopleSection();
+        setStatusMessage("Saving your status...");
+
         statusButtons.forEach((candidate) => {
           candidate.disabled = true;
         });
-        setStatusMessage("Updating your status...");
 
         try {
           const updateParticipantStatus = httpsCallable(functions, "updateParticipantStatus");
@@ -2320,8 +2431,10 @@
           });
 
           if (result?.data?.ok) {
-            currentBrowserParticipantStatus = normalizeParticipantStatus(status);
+            currentBrowserParticipantStatus = status;
             setSelectedStatus(currentBrowserParticipantStatus);
+            setStatusControlsAvailable(true);
+            renderPeopleSection();
             setStatusMessage("Status updated.");
           } else {
             throw new Error("Status update failed");
@@ -2336,6 +2449,7 @@
           if (isInactiveHangoutError(error)) {
             const refreshedPreview = await loadPreview({ preserveCurrentState: true });
             if (isPreviewUnavailableState(refreshedPreview)) {
+              pendingStatusUpdate = "";
               setStatusMessage("");
               return;
             }
@@ -2343,6 +2457,7 @@
 
           if (isStatusWindowError(error) || !isStatusWindowOpen(currentPreviewData)) {
             currentBrowserParticipantStatus = "private";
+            pendingStatusUpdate = "";
             setSelectedStatus("private");
             setStatusControlsAvailable(false);
             renderPeopleSection();
@@ -2350,7 +2465,12 @@
             return;
           }
 
-          setStatusMessage("Couldn’t update your status right now.", true);
+          currentBrowserParticipantStatus = previousStatus;
+          pendingStatusUpdate = "";
+          setSelectedStatus(previousStatus);
+          setStatusControlsAvailable(true);
+          renderPeopleSection();
+          setStatusMessage("Couldn’t save that status. Your previous status is back.", true);
         } finally {
           setStatusControlsAvailable(isStatusWindowOpen(currentPreviewData));
         }
