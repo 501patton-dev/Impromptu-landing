@@ -1030,6 +1030,7 @@
     };
     const functionsRegion = "us-central1";
     const debugModeEnabled = new URLSearchParams(window.location.search).get("debug") === "1";
+    const fallbackVisibilityWindowMinutes = 720;
 
     let auth = null;
     let functions = null;
@@ -1759,7 +1760,7 @@
           currentOrganizerStatus = normalizeParticipantStatus(currentPreviewData.organizerStatus || currentPreviewData.hostStatus);
         }
         if (hangoutData && currentPreviewData) {
-          const timingKeys = ["statusSharingIsActive", "startAt", "startTime", "startsAt", "start", "when", "scheduledAt"];
+          const timingKeys = ["statusSharingIsActive", "startAt", "startTime", "startsAt", "start", "when", "scheduledAt", "expiresAt", "expiration", "expires", "expiresOn"];
           const timingUpdates = {};
           timingKeys.forEach((key) => {
             if (hangoutData[key] !== undefined) {
@@ -1884,6 +1885,20 @@
         || preview?.scheduledAt;
     }
 
+    function getPreviewExpirationTime(preview) {
+      const backendExpiresAt = getDateValue(preview?.expiresAt || preview?.expiration || preview?.expires || preview?.expiresOn);
+      if (backendExpiresAt) {
+        return backendExpiresAt;
+      }
+
+      const startTime = getDateValue(getPreviewStartTimeValue(preview));
+      if (!startTime) {
+        return null;
+      }
+
+      return new Date(startTime.getTime() + (fallbackVisibilityWindowMinutes * 60 * 1000));
+    }
+
     function isStatusWindowOpen(preview) {
       if (preview?.statusSharingIsActive === true) {
         return true;
@@ -1986,8 +2001,7 @@
     }
 
     function isPreviewExpired(preview) {
-      const expiresValue = preview.expiresAt || preview.expiration || preview.expires || preview.expiresOn;
-      const expiresAt = getDateValue(expiresValue);
+      const expiresAt = getPreviewExpirationTime(preview);
       const now = Date.now();
       const expired = Boolean(preview.status === "expired" || (expiresAt && expiresAt.getTime() < now));
       logPreviewExpirationDecision(preview, expired ? "hidden-expired" : "shown-not-expired", expired, now);
@@ -1995,13 +2009,22 @@
     }
 
     function logPreviewExpirationDecision(preview, reason, hidden, nowMillis) {
+      const startAt = getDateValue(getPreviewStartTimeValue(preview));
+      const backendExpiresAt = getDateValue(preview?.expiresAt || preview?.expiration || preview?.expires || preview?.expiresOn);
+      const expiresAt = backendExpiresAt || getPreviewExpirationTime(preview);
+      const visibilityWindowMinutes = startAt && expiresAt
+        ? Math.round((expiresAt.getTime() - startAt.getTime()) / (60 * 1000))
+        : null;
+
       console.debug("Hangout expiration decision", {
         source: "web-preview",
         reason,
         hidden,
         createdAt: getDateValue(preview?.createdAt)?.toISOString() || null,
-        startAt: getDateValue(getPreviewStartTimeValue(preview))?.toISOString() || null,
-        expiresAt: getDateValue(preview?.expiresAt || preview?.expiration || preview?.expires || preview?.expiresOn)?.toISOString() || null,
+        startAt: startAt?.toISOString() || null,
+        expiresAt: expiresAt?.toISOString() || null,
+        expirationSource: backendExpiresAt ? "backend" : "startAt-fallback",
+        visibilityWindowMinutes,
         now: new Date(nowMillis).toISOString()
       });
     }
@@ -2103,7 +2126,7 @@
         ? `${preview.latitude}, ${preview.longitude}`
         : "";
       const statusText = preview.status || "active";
-      const expiresText = formatDate(preview.expiresAt || preview.expiration || preview.expires || preview.expiresOn);
+      const expiresText = formatDate(getPreviewExpirationTime(preview));
 
       previewTitle.textContent = title;
       previewSubtitle.textContent = "";
