@@ -847,7 +847,7 @@
             <button class="status-button" type="button" data-status="headingOut">Heading out</button>
             <button class="status-button" type="button" data-status="close">I’m close</button>
             <button class="status-button" type="button" data-status="arrived">I arrived</button>
-            <button class="status-button" type="button" data-status="private">Radio silent</button>
+            <button class="status-button" type="button" data-status="private">Not shared</button>
           </div>
           <button class="button tertiary leave-button" id="leaveButton" type="button">Leave hangout</button>
           <p class="status-message" id="statusMessage" role="status"></p>
@@ -1283,7 +1283,7 @@
           return "I arrived";
         case "private":
         default:
-          return "Radio silent";
+          return "Not shared";
       }
     }
 
@@ -1297,16 +1297,40 @@
       return getStatusLabel(rawStatus);
     }
 
-    function getLocationSummary(locationName, locationAddress) {
-      if (locationName) {
-        return [`at ${locationName}`, locationAddress].filter(Boolean).join(" • ");
+    function normalizeLocationText(value) {
+      return String(value || "")
+        .toLowerCase()
+        .replace(/[^\p{Letter}\p{Number}]+/gu, " ")
+        .trim()
+        .replace(/\s+/g, " ");
+    }
+
+    function areSubstantiallySameLocation(left, right) {
+      const normalizedLeft = normalizeLocationText(left);
+      const normalizedRight = normalizeLocationText(right);
+
+      if (!normalizedLeft || !normalizedRight) {
+        return false;
       }
 
-      if (locationAddress) {
-        return `at ${locationAddress}`;
+      return normalizedLeft === normalizedRight
+        || normalizedLeft.includes(normalizedRight)
+        || normalizedRight.includes(normalizedLeft);
+    }
+
+    function getLocationDisplay(locationName, locationAddress) {
+      const cleanName = String(locationName || "").trim();
+      const cleanAddress = String(locationAddress || "").trim();
+
+      if (cleanName && cleanAddress) {
+        if (areSubstantiallySameLocation(cleanName, cleanAddress)) {
+          return cleanAddress.length >= cleanName.length ? cleanAddress : cleanName;
+        }
+
+        return `${cleanName} • ${cleanAddress}`;
       }
 
-      return "";
+      return cleanName || cleanAddress || "";
     }
 
     function getJoinedTitle(hostName, activityText) {
@@ -1514,7 +1538,7 @@
         entries.push({
           id: hostParticipantEntry.id || currentOrganizerId || `organizer:${currentOrganizerName}`,
           displayName: getPersonName(hostParticipantEntry) || currentOrganizerName || "Host",
-          status: statusWindowOpen ? getPersonStatus(hostParticipantEntry) : "Radio silent",
+          status: statusWindowOpen ? getPersonStatus(hostParticipantEntry) : "Not shared",
           isOrganizer: true,
           roleLabel: "Host"
         });
@@ -1523,7 +1547,7 @@
         entries.push({
           id: currentOrganizerId || `organizer:${currentOrganizerName}`,
           displayName: currentOrganizerName,
-          status: statusWindowOpen ? getStatusLabel(currentOrganizerStatus) : "Radio silent",
+          status: statusWindowOpen ? getStatusLabel(currentOrganizerStatus) : "Not shared",
           isOrganizer: true,
           roleLabel: "Host"
         });
@@ -1561,7 +1585,7 @@
           displayName: getPersonName(entry),
           status: statusWindowOpen && pendingStatusUpdate && currentBrowserParticipantId && String(entryId) === String(currentBrowserParticipantId)
             ? getStatusLabel(pendingStatusUpdate)
-            : (statusWindowOpen ? getPersonStatus(entry) : "Radio silent"),
+            : (statusWindowOpen ? getPersonStatus(entry) : "Not shared"),
           isOrganizer: false,
           roleLabel: ""
         });
@@ -1573,7 +1597,7 @@
           entries.push({
             id: browserId,
             displayName: currentBrowserParticipantName || "Participant",
-            status: statusWindowOpen ? getStatusLabel(currentBrowserParticipantStatus) : "Radio silent",
+            status: statusWindowOpen ? getStatusLabel(currentBrowserParticipantStatus) : "Not shared",
             isOrganizer: false,
             roleLabel: ""
           });
@@ -1597,7 +1621,7 @@
       entries.forEach((entry) => {
         const label = entry.isOrganizer ? "Host" : entry.roleLabel;
         const statusText = entry.isOrganizer && entry.status && entry.status !== "Host" ? entry.status : entry.status;
-        const metaText = label && statusText && statusText !== "Host" ? `${label} · ${statusText}` : (label || statusText || "Radio silent");
+        const metaText = label && statusText && statusText !== "Host" ? `${label} · ${statusText}` : (label || statusText || "Not shared");
 
         const row = document.createElement("div");
         row.className = "people-row";
@@ -1813,8 +1837,8 @@
       const openTime = getStatusWindowOpenTime(preview);
       const formattedOpenTime = openTime ? formatDate(openTime) : "";
       return formattedOpenTime
-        ? `You’re radio silent for now. Status updates open at ${formattedOpenTime}. Come back when you’re headed out.`
-        : "You’re radio silent for now. Come back when you’re headed out.";
+        ? `Your status is not shared for now. Status updates open at ${formattedOpenTime}. Come back when you’re headed out.`
+        : "Your status is not shared for now. Come back when you’re headed out.";
     }
 
     function setStatusControlsAvailable(isAvailable) {
@@ -1886,7 +1910,22 @@
     function isPreviewExpired(preview) {
       const expiresValue = preview.expiresAt || preview.expiration || preview.expires || preview.expiresOn;
       const expiresAt = getDateValue(expiresValue);
-      return Boolean(preview.status === "expired" || (expiresAt && expiresAt.getTime() < Date.now()));
+      const now = Date.now();
+      const expired = Boolean(preview.status === "expired" || (expiresAt && expiresAt.getTime() < now));
+      logPreviewExpirationDecision(preview, expired ? "hidden-expired" : "shown-not-expired", expired, now);
+      return expired;
+    }
+
+    function logPreviewExpirationDecision(preview, reason, hidden, nowMillis) {
+      console.debug("Hangout expiration decision", {
+        source: "web-preview",
+        reason,
+        hidden,
+        createdAt: getDateValue(preview?.createdAt)?.toISOString() || null,
+        startAt: getDateValue(getPreviewStartTimeValue(preview))?.toISOString() || null,
+        expiresAt: getDateValue(preview?.expiresAt || preview?.expiration || preview?.expires || preview?.expiresOn)?.toISOString() || null,
+        now: new Date(nowMillis).toISOString()
+      });
     }
 
     function isPreviewUnavailableState(preview) {
@@ -1979,6 +2018,7 @@
       const title = getInviteTitle(preview);
       const locationName = preview.locationName || preview.destination || preview.location || "";
       const locationAddress = preview.locationAddress || preview.address || "";
+      const locationDisplay = getLocationDisplay(locationName, locationAddress);
       const startTimeValue = getPreviewStartTimeValue(preview);
       const formattedStartTime = formatDate(startTimeValue);
       const coordinates = preview.latitude != null && preview.longitude != null
@@ -2001,10 +2041,10 @@
         currentOrganizerStatus = "private";
       }
 
-      previewDetails.hidden = !(formattedStartTime || locationName || locationAddress);
+      previewDetails.hidden = !(formattedStartTime || locationDisplay);
       previewSubtitle.textContent = "";
       previewTime.textContent = formattedStartTime || "—";
-      previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
+      previewDestination.textContent = locationDisplay || "—";
       joinedState.hidden = true;
       statusSection.hidden = true;
       clearPeopleSection();
@@ -2128,7 +2168,7 @@
       const activityText = currentPreviewData?.activityDisplayName || currentPreviewData?.activity || "this hangout";
       const locationName = currentPreviewData?.locationName || currentPreviewData?.destination || currentPreviewData?.location || "";
       const locationAddress = currentPreviewData?.locationAddress || currentPreviewData?.address || "";
-      const locationText = getLocationSummary(locationName, locationAddress);
+      const locationDisplay = getLocationDisplay(locationName, locationAddress);
       const joinedTitle = getJoinedTitle(currentOrganizerName, activityText);
       const statusWindowOpen = isStatusWindowOpen(currentPreviewData);
 
@@ -2140,10 +2180,10 @@
       }
 
       previewTitle.textContent = joinedTitle;
-      previewSubtitle.textContent = locationText;
+      previewSubtitle.textContent = "";
       previewTime.textContent = formatDate(getPreviewStartTimeValue(currentPreviewData)) || "—";
-      previewDestination.textContent = [locationName, locationAddress].filter(Boolean).join(" • ") || "—";
-      previewDetails.hidden = !(previewTime.textContent !== "—" || locationName || locationAddress);
+      previewDestination.textContent = locationDisplay || "—";
+      previewDetails.hidden = !(previewTime.textContent !== "—" || locationDisplay);
 
       setStatusControlsAvailable(statusWindowOpen);
       setStatusMessage("");
