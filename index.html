@@ -1825,13 +1825,19 @@
 
     function setOpenAppLink() {
       if (hangoutId && hangoutId !== "hangout") {
-        const appUrl = `impromptu://hangout/${encodeURIComponent(hangoutId)}`;
+        const appUrl = new URL(`impromptu://hangout/${encodeURIComponent(hangoutId)}`);
+        if (inviteToken) {
+          appUrl.searchParams.set("invite", inviteToken);
+        }
+        if (currentBrowserParticipantId) {
+          appUrl.searchParams.set("participantId", currentBrowserParticipantId);
+        }
 
         openButton.hidden = false;
-        openButton.setAttribute("href", appUrl);
+        openButton.setAttribute("href", appUrl.toString());
         openButton.onclick = function (event) {
           event.preventDefault();
-          window.location.href = appUrl;
+          window.location.href = appUrl.toString();
         };
         openButton.removeAttribute("aria-disabled");
         openButton.classList.remove("disabled");
@@ -2218,7 +2224,7 @@
     }
 
     function showJoinedState(options = {}) {
-      const { restoreFromStorage = false, participantData = null } = options;
+      const { restoreFromStorage = false, participantData = null, participantId = "" } = options;
       hideInviteLoading();
       setJoinControlsVisible(false);
       joinedState.hidden = true;
@@ -2229,7 +2235,7 @@
       if (!restoreFromStorage) {
         currentBrowserParticipantName = displayNameInput.value.trim() || "Participant";
         currentBrowserParticipantStatus = "private";
-        currentBrowserParticipantId = auth?.currentUser?.uid || "";
+        currentBrowserParticipantId = participantId || auth?.currentUser?.uid || "";
         saveJoinedState();
       } else if (participantData) {
         currentBrowserParticipantStatus = normalizeParticipantStatus(participantData?.status || currentBrowserParticipantStatus);
@@ -2264,6 +2270,7 @@
       joinMessage.className = "join-message success";
       renderPeopleSection();
       startPeopleListeners();
+      setOpenAppLink();
     }
 
     function showLeftState(options = {}) {
@@ -2487,7 +2494,7 @@
         });
 
         if (result?.data?.ok) {
-          showJoinedState();
+          showJoinedState({ participantId: result?.data?.participantId || "" });
         } else {
           throw new Error("Join failed");
         }
