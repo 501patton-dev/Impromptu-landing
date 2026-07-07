@@ -879,7 +879,7 @@
           <div class="status-section-title">Your status</div>
           <p class="status-section-copy" id="statusSectionCopy">Let others know where you are.</p>
           <div class="status-grid" id="statusGrid">
-            <button class="status-button" type="button" data-status="headingOut">Heading out</button>
+            <button class="status-button" type="button" data-status="headingOut">On my way</button>
             <button class="status-button" type="button" data-status="close">I’m close</button>
             <button class="status-button" type="button" data-status="arrived">I arrived</button>
             <button class="status-button" type="button" data-status="private">Not shared</button>
@@ -1336,7 +1336,7 @@
     function getStatusLabel(status) {
       switch (normalizeParticipantStatus(status)) {
         case "headingOut":
-          return "Heading out";
+          return "On my way";
         case "close":
           return "I’m close";
         case "arrived":
@@ -1990,8 +1990,8 @@
       const openTime = getStatusWindowOpenTime(preview);
       const formattedOpenTime = openTime ? formatDate(openTime) : "";
       return formattedOpenTime
-        ? `Your status is not shared for now. Status updates open at ${formattedOpenTime}. Come back when you’re headed out.`
-        : "Your status is not shared for now. Come back when you’re headed out.";
+        ? `Your status is not shared for now. Status updates open at ${formattedOpenTime}. Come back when you’re on your way.`
+        : "Your status is not shared for now. Come back when you’re on your way.";
     }
 
     function setStatusControlsAvailable(isAvailable) {
