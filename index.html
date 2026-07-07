@@ -1285,6 +1285,17 @@
       return String(data?.organizerNote || data?.hostNote || data?.note || data?.organizerMessage || data?.hostMessage || "").trim();
     }
 
+    function getOrganizerNoteUpdates(data) {
+      const noteKeys = ["organizerNote", "hostNote", "note", "organizerMessage", "hostMessage"];
+      const updates = {};
+
+      noteKeys.forEach((key) => {
+        updates[key] = data && data[key] != null ? String(data[key]) : "";
+      });
+
+      return updates;
+    }
+
     function renderHostNote(data) {
       const note = getOrganizerNote(data);
       hostNoteText.textContent = note;
@@ -1807,7 +1818,7 @@
           currentOrganizerStatus = normalizeParticipantStatus(currentPreviewData.organizerStatus || currentPreviewData.hostStatus);
         }
         if (hangoutData && currentPreviewData) {
-          const timingKeys = ["statusSharingIsActive", "startAt", "startTime", "startsAt", "start", "when", "scheduledAt", "expiresAt", "expiration", "expires", "expiresOn", "organizerNote", "hostNote", "note", "organizerMessage", "hostMessage"];
+          const timingKeys = ["statusSharingIsActive", "startAt", "startTime", "startsAt", "start", "when", "scheduledAt", "expiresAt", "expiration", "expires", "expiresOn"];
           const timingUpdates = {};
           timingKeys.forEach((key) => {
             if (hangoutData[key] !== undefined) {
@@ -1816,7 +1827,8 @@
           });
           currentPreviewData = {
             ...currentPreviewData,
-            ...timingUpdates
+            ...timingUpdates,
+            ...getOrganizerNoteUpdates(hangoutData)
           };
         }
 
