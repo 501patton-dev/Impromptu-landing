@@ -1077,6 +1077,9 @@
     let currentOrganizerStatus = "private";
     let peopleUnsubscribe = null;
     let hangoutUnsubscribe = null;
+    let previewUnsubscribe = null;
+    let hangoutLocationIsAuthoritative = false;
+    let previewLocationIsAuthoritative = false;
     let currentPeopleEntries = [];
     let currentBrowserParticipantId = "";
     let currentBrowserParticipantName = "";
@@ -1296,10 +1299,88 @@
       return updates;
     }
 
+    function getLocationUpdates(data) {
+      const locationKeys = ["locationName", "placeName", "locationAddress", "destination", "location", "address", "formattedAddress", "fullAddress", "latitude", "longitude", "lat", "lng", "coordinates"];
+      const updates = {};
+
+      locationKeys.forEach((key) => {
+        updates[key] = data && data[key] != null ? data[key] : "";
+      });
+
+      return updates;
+    }
+
+    function hasLocationUpdate(data) {
+      const locationKeys = ["locationName", "placeName", "locationAddress", "destination", "location", "address", "formattedAddress", "fullAddress", "latitude", "longitude", "lat", "lng", "coordinates"];
+      return Boolean(data && locationKeys.some((key) => Object.prototype.hasOwnProperty.call(data, key)));
+    }
+
+    function getPreviewLocationName(preview) {
+      return preview?.locationName || preview?.placeName || preview?.destination || preview?.location || "";
+    }
+
+    function getPreviewLocationAddress(preview) {
+      return preview?.locationAddress || preview?.address || preview?.formattedAddress || preview?.fullAddress || "";
+    }
+
+    function getPreviewLatitude(preview) {
+      return preview?.latitude ?? preview?.lat ?? preview?.coordinates?.latitude ?? "";
+    }
+
+    function getPreviewLongitude(preview) {
+      return preview?.longitude ?? preview?.lng ?? preview?.coordinates?.longitude ?? "";
+    }
+
     function renderHostNote(data) {
       const note = getOrganizerNote(data);
       hostNoteText.textContent = note;
       hostNoteSection.hidden = note.length === 0;
+    }
+
+    function getMapsUrl(preview) {
+      const locationName = getPreviewLocationName(preview);
+      const locationAddress = getPreviewLocationAddress(preview);
+      const latitude = getPreviewLatitude(preview);
+      const longitude = getPreviewLongitude(preview);
+      const hasLatitude = latitude != null && latitude !== "";
+      const hasLongitude = longitude != null && longitude !== "";
+
+      if (hasLatitude && hasLongitude) {
+        const coordinateQuery = `${latitude},${longitude}`;
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinateQuery)}`;
+      }
+
+      if (locationName || locationAddress) {
+        const mapsQuery = [locationName, locationAddress].filter(Boolean).join(", ");
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
+      }
+
+      return "";
+    }
+
+    function updatePreviewDetailsAndMaps(preview) {
+      const locationName = getPreviewLocationName(preview);
+      const locationAddress = getPreviewLocationAddress(preview);
+      const locationDisplay = getLocationDisplay(locationName, locationAddress);
+      const formattedStartTime = formatDate(getPreviewStartTimeValue(preview));
+      const mapsUrl = getMapsUrl(preview);
+
+      previewTime.textContent = formattedStartTime || "—";
+      previewDestination.textContent = locationDisplay || "—";
+      previewDetails.hidden = !(formattedStartTime || locationDisplay);
+
+      if (mapsUrl) {
+        mapsButton.hidden = false;
+        mapsButton.setAttribute("href", mapsUrl);
+        mapsButton.onclick = function (event) {
+          event.preventDefault();
+          window.location.href = mapsUrl;
+        };
+      } else {
+        mapsButton.hidden = true;
+        mapsButton.removeAttribute("href");
+        mapsButton.onclick = null;
+      }
     }
 
     function setSelectedStatus(status) {
@@ -1397,7 +1478,7 @@
     function removeZipCode(value) {
       return cleanLocationPart(value)
         .replace(/\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b/g, "$1")
-        .replace(/\b\d{5}(?:-\d{4})?\b/g, "")
+        .replace(/^\d{5}(?:-\d{4})?$/g, "")
         .replace(/\s+/g, " ")
         .replace(/\s*,\s*/g, ", ")
         .replace(/,+$/g, "")
@@ -1414,18 +1495,43 @@
       return `${match[1]}, ${match[2]}`;
     }
 
-    function getShortAddressDisplay(address) {
+    function getAddressParts(address) {
       const withoutCountry = removeCountryFromAddress(address);
-      const parts = withoutCountry
+      return withoutCountry
         .split(",")
         .map((part) => removeZipCode(part))
         .filter(Boolean);
+    }
 
+    function looksLikeStreetAddress(value) {
+      const normalized = cleanLocationPart(value);
+      return /^\d+\s+/.test(normalized);
+    }
+
+    function getShortAddressDisplay(address) {
+      const parts = getAddressParts(address);
       if (parts.length >= 2) {
         return `${parts[0]}, ${parts[1]}`;
       }
 
-      return formatCityState(withoutCountry);
+      return formatCityState(removeCountryFromAddress(address));
+    }
+
+    function getStreetAddressDisplay(address) {
+      const parts = getAddressParts(address);
+      const streetPart = parts.find((part) => looksLikeStreetAddress(part)) || "";
+      return streetPart || parts[0] || "";
+    }
+
+    function getCityStateDisplay(address) {
+      const withoutCountry = removeCountryFromAddress(address);
+      const parts = getAddressParts(address);
+      if (parts.length >= 2) {
+        return formatCityState(parts[1]);
+      }
+
+      const remainder = withoutCountry.replace(getStreetAddressDisplay(address), "").trim();
+      return formatCityState(remainder);
     }
 
     function getAddressRemainderAfterName(locationName, locationAddress) {
@@ -1446,19 +1552,20 @@
     function getLocationDisplay(locationName, locationAddress) {
       const cleanName = cleanLocationPart(locationName);
       const cleanAddress = getShortAddressDisplay(locationAddress);
+      const streetAddress = getStreetAddressDisplay(locationAddress);
 
       if (cleanName && cleanAddress) {
         if (areSubstantiallySameLocation(cleanName, cleanAddress)) {
           const addressRemainder = getAddressRemainderAfterName(cleanName, locationAddress);
           if (addressRemainder) {
-            const cleanRemainder = getShortAddressDisplay(addressRemainder);
+            const cleanRemainder = getCityStateDisplay(addressRemainder) || getShortAddressDisplay(addressRemainder);
             return cleanRemainder ? `${cleanName}\n${cleanRemainder}` : cleanName;
           }
 
           return cleanAddress.length >= cleanName.length ? cleanAddress : cleanName;
         }
 
-        return `${cleanName}\n${cleanAddress}`;
+        return `${cleanName}\n${streetAddress || cleanAddress}`;
       }
 
       return cleanName || cleanAddress || "";
@@ -1647,6 +1754,13 @@
       clearPeopleSection();
     }
 
+    function stopPreviewListener() {
+      if (previewUnsubscribe) {
+        previewUnsubscribe();
+        previewUnsubscribe = null;
+      }
+    }
+
     function isUnavailableHangoutStatus(status) {
       return ["ended", "expired", "inactive", "unavailable", "not-active", "not_active", "closed", "disabled", "archived"].includes(String(status).toLowerCase());
     }
@@ -1818,6 +1932,8 @@
           currentOrganizerStatus = normalizeParticipantStatus(currentPreviewData.organizerStatus || currentPreviewData.hostStatus);
         }
         if (hangoutData && currentPreviewData) {
+          const hasHangoutLocationUpdate = hasLocationUpdate(hangoutData);
+          hangoutLocationIsAuthoritative = hangoutLocationIsAuthoritative || hasHangoutLocationUpdate;
           const timingKeys = ["statusSharingIsActive", "startAt", "startTime", "startsAt", "start", "when", "scheduledAt", "expiresAt", "expiration", "expires", "expiresOn"];
           const timingUpdates = {};
           timingKeys.forEach((key) => {
@@ -1828,6 +1944,7 @@
           currentPreviewData = {
             ...currentPreviewData,
             ...timingUpdates,
+            ...(hangoutLocationIsAuthoritative ? getLocationUpdates(hangoutData) : {}),
             ...getOrganizerNoteUpdates(hangoutData)
           };
         }
@@ -1842,8 +1959,41 @@
         if (!statusSection.hidden) {
           setStatusControlsAvailable(isStatusWindowOpen(currentPreviewData));
         }
+        updatePreviewDetailsAndMaps(currentPreviewData);
         renderHostNote(currentPreviewData);
         renderPeopleSection();
+      });
+    }
+
+    function startPreviewListener() {
+      if (!db || !hangoutId || hangoutId === "hangout" || previewUnsubscribe) {
+        return;
+      }
+
+      previewUnsubscribe = onSnapshot(doc(db, "hangoutPreviews", hangoutId), (snapshot) => {
+        if (!snapshot.exists()) {
+          return;
+        }
+
+        const preview = snapshot.data();
+        const hasPreviewLocationUpdate = hasLocationUpdate(preview);
+        previewLocationIsAuthoritative = previewLocationIsAuthoritative || hasPreviewLocationUpdate;
+        currentPreviewData = {
+          ...(currentPreviewData || {}),
+          ...preview,
+          ...(previewLocationIsAuthoritative ? getLocationUpdates(preview) : {})
+        };
+
+        if (currentBrowserParticipantLeft) {
+          return;
+        }
+
+        if (!joinedState.hidden || !statusSection.hidden) {
+          updatePreviewDetailsAndMaps(currentPreviewData);
+          renderHostNote(currentPreviewData);
+        } else {
+          renderPreview(currentPreviewData);
+        }
       });
     }
 
@@ -2178,13 +2328,11 @@
       const { deferJoinUntilRestore = false } = options;
       hideInviteLoading();
       const title = getInviteTitle(preview);
-      const locationName = preview.locationName || preview.destination || preview.location || "";
-      const locationAddress = preview.locationAddress || preview.address || "";
-      const locationDisplay = getLocationDisplay(locationName, locationAddress);
       const startTimeValue = getPreviewStartTimeValue(preview);
-      const formattedStartTime = formatDate(startTimeValue);
-      const coordinates = preview.latitude != null && preview.longitude != null
-        ? `${preview.latitude}, ${preview.longitude}`
+      const latitude = getPreviewLatitude(preview);
+      const longitude = getPreviewLongitude(preview);
+      const coordinates = latitude !== "" && longitude !== ""
+        ? `${latitude}, ${longitude}`
         : "";
       const statusText = preview.status || "active";
       const expiresText = formatDate(getPreviewExpirationTime(preview));
@@ -2203,27 +2351,12 @@
         currentOrganizerStatus = "private";
       }
 
-      previewDetails.hidden = !(formattedStartTime || locationDisplay);
       previewSubtitle.textContent = "";
-      previewTime.textContent = formattedStartTime || "—";
-      previewDestination.textContent = locationDisplay || "—";
       joinedState.hidden = true;
       statusSection.hidden = true;
+      updatePreviewDetailsAndMaps(preview);
       renderHostNote(preview);
       clearPeopleSection();
-
-      if (locationName || locationAddress) {
-        const mapsQuery = [locationName, locationAddress].filter(Boolean).join(", ");
-        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
-        mapsButton.hidden = false;
-        mapsButton.setAttribute("href", mapsUrl);
-        mapsButton.addEventListener("click", function (event) {
-          event.preventDefault();
-          window.location.href = mapsUrl;
-        });
-      } else {
-        mapsButton.hidden = true;
-      }
 
       if (isPreviewEnded(preview)) {
         clearStatusWindowRefresh();
@@ -2332,9 +2465,6 @@
       }
       setSelectedStatus(currentBrowserParticipantStatus || "private");
       const activityText = currentPreviewData?.activityDisplayName || currentPreviewData?.activity || "this hangout";
-      const locationName = currentPreviewData?.locationName || currentPreviewData?.destination || currentPreviewData?.location || "";
-      const locationAddress = currentPreviewData?.locationAddress || currentPreviewData?.address || "";
-      const locationDisplay = getLocationDisplay(locationName, locationAddress);
       const joinedTitle = getJoinedTitle(currentOrganizerName, activityText);
       const statusWindowOpen = isStatusWindowOpen(currentPreviewData);
 
@@ -2347,9 +2477,7 @@
 
       previewTitle.textContent = joinedTitle;
       previewSubtitle.textContent = "";
-      previewTime.textContent = formatDate(getPreviewStartTimeValue(currentPreviewData)) || "—";
-      previewDestination.textContent = locationDisplay || "—";
-      previewDetails.hidden = !(previewTime.textContent !== "—" || locationDisplay);
+      updatePreviewDetailsAndMaps(currentPreviewData);
 
       setStatusControlsAvailable(statusWindowOpen);
       setStatusMessage("");
@@ -2468,6 +2596,7 @@
         await configureAuthPersistence();
         functions = getFunctions(app, functionsRegion);
         console.log("[join debug] functions region configured:", functionsRegion);
+        startPreviewListener();
 
         const previewSnapshot = await getDoc(doc(db, "hangoutPreviews", hangoutId));
         if (previewSnapshot.exists()) {
