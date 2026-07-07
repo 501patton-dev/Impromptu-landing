@@ -1323,6 +1323,10 @@
       return preview?.locationAddress || preview?.address || preview?.formattedAddress || preview?.fullAddress || "";
     }
 
+    function getPreviewFullMapsAddress(preview) {
+      return preview?.fullAddress || preview?.formattedAddress || preview?.locationAddress || preview?.address || "";
+    }
+
     function getPreviewLatitude(preview) {
       return preview?.latitude ?? preview?.lat ?? preview?.coordinates?.latitude ?? "";
     }
@@ -1339,20 +1343,20 @@
 
     function getMapsUrl(preview) {
       const locationName = getPreviewLocationName(preview);
-      const locationAddress = getPreviewLocationAddress(preview);
+      const locationAddress = getPreviewFullMapsAddress(preview);
       const latitude = getPreviewLatitude(preview);
       const longitude = getPreviewLongitude(preview);
       const hasLatitude = latitude != null && latitude !== "";
       const hasLongitude = longitude != null && longitude !== "";
 
-      if (hasLatitude && hasLongitude) {
-        const coordinateQuery = `${latitude},${longitude}`;
-        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinateQuery)}`;
-      }
-
       if (locationName || locationAddress) {
         const mapsQuery = [locationName, locationAddress].filter(Boolean).join(", ");
         return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`;
+      }
+
+      if (hasLatitude && hasLongitude) {
+        const coordinateQuery = `${latitude},${longitude}`;
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinateQuery)}`;
       }
 
       return "";
