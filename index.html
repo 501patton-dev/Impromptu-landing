@@ -216,6 +216,35 @@
       white-space: pre-line;
     }
 
+    .host-note {
+      margin: 2px 0 18px;
+      padding: 14px 0 0;
+      border-top: 1px solid rgba(151, 132, 255, 0.1);
+      display: grid;
+      gap: 6px;
+    }
+
+    .host-note[hidden] {
+      display: none;
+    }
+
+    .host-note-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(244, 242, 255, 0.44);
+    }
+
+    .host-note-text {
+      margin: 0;
+      color: rgba(244, 242, 255, 0.74);
+      font-size: 15px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
     .action-stack {
       display: flex;
       flex-direction: column;
@@ -816,6 +845,11 @@
           </a>
         </div>
 
+        <section class="host-note" id="hostNoteSection" hidden>
+          <div class="host-note-label">Host note</div>
+          <p class="host-note-text" id="hostNoteText"></p>
+        </section>
+
         <div class="join-section" id="joinSection" hidden>
           <label class="join-label" for="displayNameInput">Display name</label>
           <input
@@ -1000,6 +1034,8 @@
     const debugStatus = document.getElementById("debugStatus");
     const inviteNote = document.getElementById("inviteNote");
     const noteContent = document.getElementById("noteContent");
+    const hostNoteSection = document.getElementById("hostNoteSection");
+    const hostNoteText = document.getElementById("hostNoteText");
     const peopleSection = document.getElementById("peopleSection");
     const peopleList = document.getElementById("peopleList");
     const betaRequestPrompt = document.getElementById("betaRequestPrompt");
@@ -1226,6 +1262,7 @@
       joinedState.hidden = true;
       statusSection.hidden = true;
       inviteNote.hidden = true;
+      renderHostNote(null);
       clearPeopleSection();
     }
 
@@ -1242,6 +1279,16 @@
     function setStatusMessage(message, isError = false) {
       statusMessage.textContent = message;
       statusMessage.classList.toggle("error", isError);
+    }
+
+    function getOrganizerNote(data) {
+      return String(data?.organizerNote || data?.hostNote || data?.note || data?.organizerMessage || data?.hostMessage || "").trim();
+    }
+
+    function renderHostNote(data) {
+      const note = getOrganizerNote(data);
+      hostNoteText.textContent = note;
+      hostNoteSection.hidden = note.length === 0;
     }
 
     function setSelectedStatus(status) {
@@ -1760,7 +1807,7 @@
           currentOrganizerStatus = normalizeParticipantStatus(currentPreviewData.organizerStatus || currentPreviewData.hostStatus);
         }
         if (hangoutData && currentPreviewData) {
-          const timingKeys = ["statusSharingIsActive", "startAt", "startTime", "startsAt", "start", "when", "scheduledAt", "expiresAt", "expiration", "expires", "expiresOn"];
+          const timingKeys = ["statusSharingIsActive", "startAt", "startTime", "startsAt", "start", "when", "scheduledAt", "expiresAt", "expiration", "expires", "expiresOn", "organizerNote", "hostNote", "note", "organizerMessage", "hostMessage"];
           const timingUpdates = {};
           timingKeys.forEach((key) => {
             if (hangoutData[key] !== undefined) {
@@ -1783,6 +1830,7 @@
         if (!statusSection.hidden) {
           setStatusControlsAvailable(isStatusWindowOpen(currentPreviewData));
         }
+        renderHostNote(currentPreviewData);
         renderPeopleSection();
       });
     }
@@ -2092,6 +2140,7 @@
       joinSection.hidden = true;
       joinedState.hidden = true;
       statusSection.hidden = true;
+      renderHostNote(null);
       clearPeopleSection();
       stopPeopleListeners();
       setNote(message);
@@ -2148,6 +2197,7 @@
       previewDestination.textContent = locationDisplay || "—";
       joinedState.hidden = true;
       statusSection.hidden = true;
+      renderHostNote(preview);
       clearPeopleSection();
 
       if (locationName || locationAddress) {
@@ -2173,6 +2223,7 @@
         joinSection.hidden = true;
         joinedState.hidden = true;
         statusSection.hidden = true;
+        renderHostNote(null);
         clearPeopleSection();
         stopPeopleListeners();
         clearJoinedState();
@@ -2190,6 +2241,7 @@
         joinSection.hidden = true;
         joinedState.hidden = true;
         statusSection.hidden = true;
+        renderHostNote(null);
         clearPeopleSection();
         stopPeopleListeners();
         clearJoinedState();
@@ -2253,6 +2305,7 @@
       joinedState.hidden = true;
       statusSection.hidden = false;
       inviteNote.hidden = true;
+      renderHostNote(currentPreviewData);
       joinMessage.textContent = "";
       currentBrowserParticipantLeft = false;
       if (!restoreFromStorage) {
@@ -2311,6 +2364,7 @@
       mapsButton.hidden = true;
       openButton.hidden = true;
       inviteNote.hidden = true;
+      renderHostNote(null);
       previewTitle.textContent = "You left this hangout.";
       previewSubtitle.textContent = "Your status is no longer visible.";
       previewDetails.hidden = true;
