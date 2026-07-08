@@ -1082,6 +1082,8 @@
     let previewLocationIsAuthoritative = false;
     let hangoutTimingIsAuthoritative = false;
     let previewTimingIsAuthoritative = false;
+    let hangoutActivityIsAuthoritative = false;
+    let previewActivityIsAuthoritative = false;
     let currentPeopleEntries = [];
     let currentBrowserParticipantId = "";
     let currentBrowserParticipantName = "";
@@ -1299,6 +1301,69 @@
       });
 
       return updates;
+    }
+
+    function normalizeActivityText(value) {
+      return String(value || "").trim().replace(/\s+/g, " ");
+    }
+
+    function isPlaceholderActivityText(value) {
+      const normalized = normalizeActivityText(value).toLowerCase();
+      if (!normalized) {
+        return true;
+      }
+
+      return [
+        "hangout",
+        "a hangout",
+        "this hangout",
+        "to a hangout",
+        "for a hangout",
+        "meetup",
+        "a meetup",
+        "what are you up to?",
+        "you've been invited to a hangout.",
+        "you’ve been invited to a hangout."
+      ].includes(normalized);
+    }
+
+    function getActivityUpdates(data) {
+      const activityKeys = ["activityTitle", "hangoutTitle", "title", "what", "activityText", "activityDisplayName", "activity", "name", "description", "activityInvitePhrase"];
+      const updates = {};
+
+      activityKeys.forEach((key) => {
+        updates[key] = data && data[key] != null ? data[key] : "";
+      });
+
+      return updates;
+    }
+
+    function hasActivityUpdate(data) {
+      const activityKeys = ["activityTitle", "hangoutTitle", "title", "what", "activityText", "activityDisplayName", "activity", "name", "description", "activityInvitePhrase"];
+      return Boolean(data && activityKeys.some((key) => Object.prototype.hasOwnProperty.call(data, key)));
+    }
+
+    function getPreviewActivityText(preview) {
+      const activityCandidates = [
+        preview?.activityTitle,
+        preview?.hangoutTitle,
+        preview?.title,
+        preview?.what,
+        preview?.activityText,
+        preview?.activityDisplayName,
+        preview?.activity,
+        preview?.name,
+        preview?.description
+      ];
+
+      for (const candidate of activityCandidates) {
+        const activityText = normalizeActivityText(candidate);
+        if (!isPlaceholderActivityText(activityText)) {
+          return activityText;
+        }
+      }
+
+      return "";
     }
 
     function getLocationUpdates(data) {
@@ -1597,18 +1662,6 @@
       }
 
       return cleanName || cleanAddress || "";
-    }
-
-    function getJoinedTitle(hostName, activityText) {
-      if (!hostName) {
-        return "You’ve joined this hangout";
-      }
-
-      if (!activityText || activityText === "this hangout") {
-        return `You’ve joined ${hostName}`;
-      }
-
-      return `You’ve joined ${hostName} for ${activityText}`;
     }
 
     function getJoinedStateStorageKey() {
@@ -1962,12 +2015,15 @@
         if (hangoutData && currentPreviewData) {
           const hasHangoutLocationUpdate = hasLocationUpdate(hangoutData);
           const hasHangoutTimingUpdate = hasTimingUpdate(hangoutData);
+          const hasHangoutActivityUpdate = hasActivityUpdate(hangoutData);
           hangoutLocationIsAuthoritative = hangoutLocationIsAuthoritative || hasHangoutLocationUpdate;
           hangoutTimingIsAuthoritative = hangoutTimingIsAuthoritative || hasHangoutTimingUpdate;
+          hangoutActivityIsAuthoritative = hangoutActivityIsAuthoritative || hasHangoutActivityUpdate;
           currentPreviewData = {
             ...currentPreviewData,
             ...getTimingUpdates(hangoutData, hangoutTimingIsAuthoritative),
             ...(hangoutLocationIsAuthoritative ? getLocationUpdates(hangoutData) : {}),
+            ...(hangoutActivityIsAuthoritative ? getActivityUpdates(hangoutData) : {}),
             ...getOrganizerNoteUpdates(hangoutData)
           };
         }
@@ -1987,6 +2043,7 @@
         if (!statusSection.hidden) {
           setStatusControlsAvailable(isStatusWindowOpen(currentPreviewData));
         }
+        updatePreviewTitle(currentPreviewData);
         updatePreviewDetailsAndMaps(currentPreviewData);
         renderHostNote(currentPreviewData);
         renderPeopleSection();
@@ -2006,13 +2063,16 @@
         const preview = snapshot.data();
         const hasPreviewLocationUpdate = hasLocationUpdate(preview);
         const hasPreviewTimingUpdate = hasTimingUpdate(preview);
+        const hasPreviewActivityUpdate = hasActivityUpdate(preview);
         previewLocationIsAuthoritative = previewLocationIsAuthoritative || hasPreviewLocationUpdate;
         previewTimingIsAuthoritative = previewTimingIsAuthoritative || hasPreviewTimingUpdate;
+        previewActivityIsAuthoritative = previewActivityIsAuthoritative || hasPreviewActivityUpdate;
         currentPreviewData = {
           ...(currentPreviewData || {}),
           ...preview,
           ...getTimingUpdates(preview, previewTimingIsAuthoritative),
-          ...(previewLocationIsAuthoritative ? getLocationUpdates(preview) : {})
+          ...(previewLocationIsAuthoritative ? getLocationUpdates(preview) : {}),
+          ...(previewActivityIsAuthoritative ? getActivityUpdates(preview) : {})
         };
 
         if (currentBrowserParticipantLeft) {
@@ -2029,6 +2089,7 @@
           if (!statusSection.hidden) {
             setStatusControlsAvailable(isStatusWindowOpen(currentPreviewData));
           }
+          updatePreviewTitle(currentPreviewData);
           updatePreviewDetailsAndMaps(currentPreviewData);
           renderHostNote(currentPreviewData);
         } else {
@@ -2229,19 +2290,67 @@
       }
     }
 
-    function getInviteTitle(preview) {
-      const organizerDisplayName = preview.organizerDisplayName || "";
-      const activityInvitePhrase = preview.activityInvitePhrase || "";
-
-      if (activityInvitePhrase) {
-        if (organizerDisplayName) {
-          return `${organizerDisplayName} is inviting you ${activityInvitePhrase}`;
-        }
-
-        return `You’re invited ${activityInvitePhrase}`;
+    function getActivityPhrase(activityText) {
+      const cleanActivityText = normalizeActivityText(activityText);
+      if (!cleanActivityText) {
+        return "";
       }
 
-      return preview.activityDisplayName || preview.activity || "You’ve been invited to a hangout.";
+      if (/^(for|to)\b/i.test(cleanActivityText)) {
+        return cleanActivityText;
+      }
+
+      if (/^(meet|meet up|grab|go|come|join|walk|run|watch|play|see|catch|have|get|hang)\b/i.test(cleanActivityText)) {
+        return `to ${cleanActivityText}`;
+      }
+
+      return `for ${cleanActivityText}`;
+    }
+
+    function getInviteActivityPhrase(preview) {
+      const activityText = getPreviewActivityText(preview);
+      if (activityText) {
+        return getActivityPhrase(activityText);
+      }
+
+      const activityInvitePhrase = normalizeActivityText(preview?.activityInvitePhrase);
+      if (!isPlaceholderActivityText(activityInvitePhrase)) {
+        return activityInvitePhrase;
+      }
+
+      return "to a hangout";
+    }
+
+    function getInviteTitle(preview) {
+      const organizerDisplayName = preview?.organizerDisplayName || "";
+      const activityInvitePhrase = getInviteActivityPhrase(preview);
+
+      if (organizerDisplayName) {
+        return `${organizerDisplayName} is inviting you ${activityInvitePhrase}`;
+      }
+
+      return `You’re invited ${activityInvitePhrase}`;
+    }
+
+    function updatePreviewTitle(preview) {
+      const title = (!joinedState.hidden || !statusSection.hidden)
+        ? getJoinedTitle(currentOrganizerName, getPreviewActivityText(preview))
+        : getInviteTitle(preview);
+
+      previewTitle.textContent = title;
+      document.title = title;
+    }
+
+    function getJoinedTitle(hostName, activityText) {
+      if (!hostName) {
+        return "You’ve joined this hangout";
+      }
+
+      if (!activityText || activityText === "this hangout") {
+        return `You’ve joined ${hostName}`;
+      }
+
+      return `You’ve joined ${hostName} ${getActivityPhrase(activityText)}`;
     }
 
     function isPreviewEnded(preview) {
@@ -2504,7 +2613,7 @@
         setSelectedStatus(currentBrowserParticipantStatus);
       }
       setSelectedStatus(currentBrowserParticipantStatus || "private");
-      const activityText = currentPreviewData?.activityDisplayName || currentPreviewData?.activity || "this hangout";
+      const activityText = getPreviewActivityText(currentPreviewData);
       const joinedTitle = getJoinedTitle(currentOrganizerName, activityText);
       const statusWindowOpen = isStatusWindowOpen(currentPreviewData);
 
@@ -2517,6 +2626,7 @@
 
       previewTitle.textContent = joinedTitle;
       previewSubtitle.textContent = "";
+      document.title = joinedTitle;
       updatePreviewDetailsAndMaps(currentPreviewData);
 
       setStatusControlsAvailable(statusWindowOpen);
