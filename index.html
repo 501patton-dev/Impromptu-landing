@@ -1080,6 +1080,8 @@
     let previewUnsubscribe = null;
     let hangoutLocationIsAuthoritative = false;
     let previewLocationIsAuthoritative = false;
+    let hangoutTimingIsAuthoritative = false;
+    let previewTimingIsAuthoritative = false;
     let currentPeopleEntries = [];
     let currentBrowserParticipantId = "";
     let currentBrowserParticipantName = "";
@@ -1313,6 +1315,28 @@
     function hasLocationUpdate(data) {
       const locationKeys = ["locationName", "placeName", "locationAddress", "destination", "location", "address", "formattedAddress", "fullAddress", "latitude", "longitude", "lat", "lng", "coordinates"];
       return Boolean(data && locationKeys.some((key) => Object.prototype.hasOwnProperty.call(data, key)));
+    }
+
+    function getTimingUpdates(data, clearTimingAliases = false) {
+      const timingKeys = ["startAt", "startTime", "startsAt", "start", "when", "scheduledAt", "expiresAt", "expiration", "expires", "expiresOn"];
+      const updates = {};
+
+      if (data && Object.prototype.hasOwnProperty.call(data, "statusSharingIsActive")) {
+        updates.statusSharingIsActive = data.statusSharingIsActive != null ? data.statusSharingIsActive : "";
+      }
+
+      if (clearTimingAliases || hasTimingUpdate(data)) {
+        timingKeys.forEach((key) => {
+          updates[key] = data && data[key] != null ? data[key] : "";
+        });
+      }
+
+      return updates;
+    }
+
+    function hasTimingUpdate(data) {
+      const timingKeys = ["startAt", "startTime", "startsAt", "start", "when", "scheduledAt", "expiresAt", "expiration", "expires", "expiresOn"];
+      return Boolean(data && timingKeys.some((key) => Object.prototype.hasOwnProperty.call(data, key)));
     }
 
     function getPreviewLocationName(preview) {
@@ -1937,17 +1961,12 @@
         }
         if (hangoutData && currentPreviewData) {
           const hasHangoutLocationUpdate = hasLocationUpdate(hangoutData);
+          const hasHangoutTimingUpdate = hasTimingUpdate(hangoutData);
           hangoutLocationIsAuthoritative = hangoutLocationIsAuthoritative || hasHangoutLocationUpdate;
-          const timingKeys = ["statusSharingIsActive", "startAt", "startTime", "startsAt", "start", "when", "scheduledAt", "expiresAt", "expiration", "expires", "expiresOn"];
-          const timingUpdates = {};
-          timingKeys.forEach((key) => {
-            if (hangoutData[key] !== undefined) {
-              timingUpdates[key] = hangoutData[key];
-            }
-          });
+          hangoutTimingIsAuthoritative = hangoutTimingIsAuthoritative || hasHangoutTimingUpdate;
           currentPreviewData = {
             ...currentPreviewData,
-            ...timingUpdates,
+            ...getTimingUpdates(hangoutData, hangoutTimingIsAuthoritative),
             ...(hangoutLocationIsAuthoritative ? getLocationUpdates(hangoutData) : {}),
             ...getOrganizerNoteUpdates(hangoutData)
           };
@@ -1956,6 +1975,11 @@
         const hangoutStatus = hangoutData?.status || currentPreviewData?.status || "active";
         if (isUnavailableHangoutStatus(hangoutStatus)) {
           renderPreview({ ...(currentPreviewData || {}), status: hangoutStatus });
+          return;
+        }
+
+        if (isPreviewUnavailableState(currentPreviewData)) {
+          renderPreview(currentPreviewData);
           return;
         }
 
@@ -1981,10 +2005,13 @@
 
         const preview = snapshot.data();
         const hasPreviewLocationUpdate = hasLocationUpdate(preview);
+        const hasPreviewTimingUpdate = hasTimingUpdate(preview);
         previewLocationIsAuthoritative = previewLocationIsAuthoritative || hasPreviewLocationUpdate;
+        previewTimingIsAuthoritative = previewTimingIsAuthoritative || hasPreviewTimingUpdate;
         currentPreviewData = {
           ...(currentPreviewData || {}),
           ...preview,
+          ...getTimingUpdates(preview, previewTimingIsAuthoritative),
           ...(previewLocationIsAuthoritative ? getLocationUpdates(preview) : {})
         };
 
@@ -1992,7 +2019,16 @@
           return;
         }
 
+        if (isPreviewUnavailableState(currentPreviewData)) {
+          renderPreview(currentPreviewData);
+          return;
+        }
+
+        scheduleStatusWindowRefresh(currentPreviewData);
         if (!joinedState.hidden || !statusSection.hidden) {
+          if (!statusSection.hidden) {
+            setStatusControlsAvailable(isStatusWindowOpen(currentPreviewData));
+          }
           updatePreviewDetailsAndMaps(currentPreviewData);
           renderHostNote(currentPreviewData);
         } else {
