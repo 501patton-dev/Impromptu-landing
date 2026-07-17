@@ -868,6 +868,7 @@
 
         <div class="joined-state" id="joinedState" hidden>
           <p class="join-message success" id="joinedStateText">You’ve joined.</p>
+          <button class="button primary" id="rejoinButton" type="button" hidden>Rejoin Hangout</button>
         </div>
 
         <section class="people-section" id="peopleSection" hidden>
@@ -1024,6 +1025,7 @@
     const displayNameInput = document.getElementById("displayNameInput");
     const joinButton = document.getElementById("joinButton");
     const joinMessage = document.getElementById("joinMessage");
+    const rejoinButton = document.getElementById("rejoinButton");
     const statusSection = document.getElementById("statusSection");
     const statusSectionCopy = document.getElementById("statusSectionCopy");
     const statusGrid = document.getElementById("statusGrid");
@@ -1267,6 +1269,7 @@
       openButton.hidden = true;
       joinSection.hidden = true;
       joinedState.hidden = true;
+      rejoinButton.hidden = true;
       statusSection.hidden = true;
       inviteNote.hidden = true;
       renderHostNote(null);
@@ -1716,8 +1719,7 @@
       displayNameInput.value = currentBrowserParticipantName;
 
       if (!isParticipantActive(participantData)) {
-        clearJoinedState();
-        showLeftState({ saveState: false });
+        showLeftState();
         return { status: "left" };
       }
 
@@ -1733,27 +1735,35 @@
       const storedStateText = localStorage.getItem(getJoinedStateStorageKey());
       let storedState = null;
       let attemptedAuthFallback = false;
+      let authUser = null;
 
       try {
         if (storedStateText) {
           storedState = JSON.parse(storedStateText);
         }
 
-        if (storedState?.left) {
-          clearJoinedState();
-          showLeftState({ saveState: false });
-          return { status: "left" };
-        }
+        authUser = await waitForAuthReady();
 
         if (storedState?.participantId) {
-          return await restoreParticipantIdentity(storedState.participantId, storedState.displayName || "");
+          if (!authUser?.uid || String(storedState.participantId) !== String(authUser.uid)) {
+            return { status: "not-joined" };
+          }
+
+          const restoreResult = await restoreParticipantIdentity(storedState.participantId, storedState.displayName || "");
+          if (restoreResult.status === "retry" && storedState.left) {
+            currentBrowserParticipantId = storedState.participantId;
+            currentBrowserParticipantName = storedState.displayName || "Participant";
+            displayNameInput.value = currentBrowserParticipantName;
+            showLeftState({ saveState: false });
+            return { status: "left" };
+          }
+
+          return restoreResult;
         }
 
-        await waitForAuthReady();
-
-        if (auth?.currentUser?.uid) {
+        if (authUser?.uid) {
           attemptedAuthFallback = true;
-          const authRestoreResult = await restoreParticipantIdentity(auth.currentUser.uid);
+          const authRestoreResult = await restoreParticipantIdentity(authUser.uid);
           return authRestoreResult.status === "retry"
             ? { status: "not-joined" }
             : authRestoreResult;
@@ -1843,7 +1853,7 @@
     }
 
     function isUnavailableHangoutStatus(status) {
-      return ["ended", "expired", "inactive", "unavailable", "not-active", "not_active", "closed", "disabled", "archived"].includes(String(status).toLowerCase());
+      return ["ended", "expired", "inactive", "unavailable", "not-active", "not_active", "closed", "disabled", "archived", "cancelled", "canceled"].includes(String(status).toLowerCase());
     }
 
     function renderPeopleSection() {
@@ -2075,12 +2085,13 @@
           ...(previewActivityIsAuthoritative ? getActivityUpdates(preview) : {})
         };
 
-        if (currentBrowserParticipantLeft) {
+        if (isPreviewUnavailableState(currentPreviewData)) {
+          renderPreview(currentPreviewData);
           return;
         }
 
-        if (isPreviewUnavailableState(currentPreviewData)) {
-          renderPreview(currentPreviewData);
+        if (currentBrowserParticipantLeft) {
+          updateLeftStateRejoinAction();
           return;
         }
 
@@ -2113,7 +2124,10 @@
         const hangoutStatus = hangoutData?.status || currentPreviewData?.status || "active";
         if (isUnavailableHangoutStatus(hangoutStatus)) {
           renderPreview({ ...(currentPreviewData || {}), status: hangoutStatus });
+          return;
         }
+
+        updateLeftStateRejoinAction();
       });
     }
 
@@ -2450,6 +2464,7 @@
       openButton.hidden = true;
       joinSection.hidden = true;
       joinedState.hidden = true;
+      rejoinButton.hidden = true;
       statusSection.hidden = true;
       renderHostNote(null);
       clearPeopleSection();
@@ -2460,6 +2475,7 @@
     function showRestoringSessionState() {
       setJoinControlsVisible(false);
       joinedState.hidden = true;
+      rejoinButton.hidden = true;
       statusSection.hidden = true;
       setNote("Restoring your session...");
       setJoinMessage("");
@@ -2468,6 +2484,7 @@
     function showRestoreRetryState() {
       setJoinControlsVisible(false);
       joinedState.hidden = true;
+      rejoinButton.hidden = true;
       statusSection.hidden = true;
       setNote("We couldn’t restore your session just now. Refresh when you’re back online and we’ll try again.");
       setJoinMessage("");
@@ -2502,6 +2519,7 @@
 
       previewSubtitle.textContent = "";
       joinedState.hidden = true;
+      rejoinButton.hidden = true;
       statusSection.hidden = true;
       updatePreviewDetailsAndMaps(preview);
       renderHostNote(preview);
@@ -2516,6 +2534,7 @@
         openButton.hidden = true;
         joinSection.hidden = true;
         joinedState.hidden = true;
+        rejoinButton.hidden = true;
         statusSection.hidden = true;
         renderHostNote(null);
         clearPeopleSection();
@@ -2534,6 +2553,7 @@
         openButton.hidden = true;
         joinSection.hidden = true;
         joinedState.hidden = true;
+        rejoinButton.hidden = true;
         statusSection.hidden = true;
         renderHostNote(null);
         clearPeopleSection();
@@ -2572,6 +2592,7 @@
       if (canJoin) {
         setJoinControlsVisible(true);
         joinedState.hidden = true;
+        rejoinButton.hidden = true;
         statusSection.hidden = true;
         setNote(detailParts.length ? detailParts.join(" • ") : (previewStatusWindowOpen
           ? "Join now to let the host know you’re in."
@@ -2580,6 +2601,7 @@
       } else {
         setJoinControlsVisible(false);
         joinedState.hidden = true;
+        rejoinButton.hidden = true;
         statusSection.hidden = true;
         if (!inviteToken) {
           clearPeopleSection();
@@ -2597,6 +2619,7 @@
       hideInviteLoading();
       setJoinControlsVisible(false);
       joinedState.hidden = true;
+      rejoinButton.hidden = true;
       statusSection.hidden = false;
       inviteNote.hidden = true;
       renderHostNote(currentPreviewData);
@@ -2639,6 +2662,27 @@
       setOpenAppLink();
     }
 
+    function canRejoinCurrentHangout() {
+      return Boolean(
+        inviteToken
+        && currentBrowserParticipantId
+        && currentPreviewData
+        && !isPreviewUnavailableState(currentPreviewData)
+      );
+    }
+
+    function updateLeftStateRejoinAction() {
+      const canRejoin = canRejoinCurrentHangout();
+      joinedState.hidden = false;
+      joinedStateText.textContent = canRejoin
+        ? "You can rejoin while this hangout is active."
+        : "This hangout is no longer available to rejoin.";
+      joinedStateText.className = "join-message";
+      rejoinButton.hidden = !canRejoin;
+      rejoinButton.disabled = !canRejoin;
+      rejoinButton.textContent = "Rejoin Hangout";
+    }
+
     function showLeftState(options = {}) {
       const { saveState = true } = options;
       clearStatusWindowRefresh();
@@ -2649,7 +2693,7 @@
       markCurrentParticipantLeftInMemory();
       setJoinControlsVisible(false);
       setSelectedStatus("private");
-      joinedState.hidden = true;
+      joinedState.hidden = false;
       statusSection.hidden = true;
       mapsButton.hidden = true;
       openButton.hidden = true;
@@ -2658,14 +2702,14 @@
       previewTitle.textContent = "You left this hangout.";
       previewSubtitle.textContent = "Your status is no longer visible.";
       previewDetails.hidden = true;
-      joinedStateText.textContent = "";
       setStatusMessage("");
       joinMessage.textContent = "";
       clearPeopleSection();
+      updateLeftStateRejoinAction();
       startLeftStateHangoutListener();
 
       if (saveState) {
-        clearJoinedState();
+        saveLeftState();
       }
     }
 
@@ -2779,6 +2823,101 @@
       }
     }
 
+    function getRejoinDisplayName() {
+      const displayName = currentBrowserParticipantName || displayNameInput.value.trim() || "Participant";
+      return displayName.slice(0, 40);
+    }
+
+    function focusElement(element) {
+      if (!element || element.hidden || element.disabled) {
+        return;
+      }
+
+      element.focus({ preventScroll: true });
+    }
+
+    async function joinCurrentHangout(options = {}) {
+      const { rejoin = false } = options;
+      const displayName = rejoin ? getRejoinDisplayName() : displayNameInput.value.trim();
+      const actionButton = rejoin ? rejoinButton : joinButton;
+
+      if (actionButton.disabled) {
+        return;
+      }
+
+      if (!rejoin && (displayName.length < 1 || displayName.length > 40)) {
+        setJoinMessage("Please enter a display name between 1 and 40 characters.", true);
+        return;
+      }
+
+      if (!auth || !functions) {
+        console.error("[join debug] join handler unavailable", {
+          code: "auth-or-functions-not-ready",
+          message: "Auth or functions not initialized",
+          details: "auth=" + Boolean(auth) + ", functions=" + Boolean(functions)
+        });
+        if (rejoin) {
+          joinedStateText.textContent = "Rejoining is unavailable right now.";
+          joinedStateText.className = "join-message error";
+        } else {
+          setJoinMessage("Joining is unavailable right now.", true);
+        }
+        setDebugStatus("auth-or-functions-not-ready", "Auth or Functions was not initialized.");
+        return;
+      }
+
+      actionButton.disabled = true;
+      actionButton.textContent = rejoin ? "Rejoining..." : "Joining...";
+      if (rejoin) {
+        joinedStateText.textContent = "Rejoining this hangout...";
+        joinedStateText.className = "join-message";
+      } else {
+        setJoinMessage("Joining this hangout...");
+      }
+
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+
+        console.log("[join debug] auth.currentUser after signInAnonymously:", Boolean(auth.currentUser));
+        displayNameInput.value = displayName;
+
+        const joinHangout = httpsCallable(functions, "joinHangout");
+        const result = await joinHangout({
+          hangoutId,
+          inviteToken,
+          displayName
+        });
+
+        if (result?.data?.ok) {
+          showJoinedState({ participantId: result?.data?.participantId || "" });
+          focusElement(leaveButton);
+        } else {
+          throw new Error("Join failed");
+        }
+      } catch (error) {
+        console.error("[join debug] joinHangout error", {
+          code: error?.code,
+          message: error?.message,
+          details: error?.details
+        });
+
+        if (rejoin) {
+          updateLeftStateRejoinAction();
+          joinedStateText.textContent = "Couldn’t rejoin this hangout. The invite may have expired or already been used.";
+          joinedStateText.className = "join-message error";
+          focusElement(rejoinButton);
+        } else {
+          setJoinMessage("Couldn’t join this hangout. The invite may have expired or already been used.", true);
+        }
+        setDebugStatus(error?.code || "join-failed", error?.message || "Join attempt failed.");
+      } finally {
+        actionButton.disabled = false;
+        actionButton.textContent = rejoin ? "Rejoin Hangout" : "Join";
+      }
+    }
+
     leaveButton.addEventListener("click", async function () {
       if (!auth || !functions || !hangoutId || !currentBrowserParticipantId) {
         setStatusMessage("Couldn’t leave this hangout right now.", true);
@@ -2826,58 +2965,11 @@
     });
 
     joinButton.addEventListener("click", async function () {
-      const displayName = displayNameInput.value.trim();
-      if (displayName.length < 1 || displayName.length > 40) {
-        setJoinMessage("Please enter a display name between 1 and 40 characters.", true);
-        return;
-      }
+      await joinCurrentHangout();
+    });
 
-      if (!auth || !functions) {
-        console.error("[join debug] join handler unavailable", {
-          code: "auth-or-functions-not-ready",
-          message: "Auth or functions not initialized",
-          details: "auth=" + Boolean(auth) + ", functions=" + Boolean(functions)
-        });
-        setJoinMessage("Joining is unavailable right now.", true);
-        setDebugStatus("auth-or-functions-not-ready", "Auth or Functions was not initialized.");
-        return;
-      }
-
-      joinButton.disabled = true;
-      joinButton.textContent = "Joining...";
-      setJoinMessage("Joining this hangout...");
-
-      try {
-        if (!auth.currentUser) {
-          await signInAnonymously(auth);
-        }
-
-        console.log("[join debug] auth.currentUser after signInAnonymously:", Boolean(auth.currentUser));
-
-        const joinHangout = httpsCallable(functions, "joinHangout");
-        const result = await joinHangout({
-          hangoutId,
-          inviteToken,
-          displayName
-        });
-
-        if (result?.data?.ok) {
-          showJoinedState({ participantId: result?.data?.participantId || "" });
-        } else {
-          throw new Error("Join failed");
-        }
-      } catch (error) {
-        console.error("[join debug] joinHangout error", {
-          code: error?.code,
-          message: error?.message,
-          details: error?.details
-        });
-        setJoinMessage("Couldn’t join this hangout. The invite may have expired or already been used.", true);
-        setDebugStatus(error?.code || "join-failed", error?.message || "Join attempt failed.");
-      } finally {
-        joinButton.disabled = false;
-        joinButton.textContent = "Join";
-      }
+    rejoinButton.addEventListener("click", async function () {
+      await joinCurrentHangout({ rejoin: true });
     });
 
     statusButtons.forEach((button) => {
