@@ -1709,7 +1709,7 @@
 
       const participantDoc = await getDoc(doc(db, "hangouts", hangoutId, "participants", participantId));
       if (!participantDoc.exists()) {
-        return { status: "retry", reason: "participant-doc-missing" };
+        return { status: "not-joined", reason: "participant-doc-missing" };
       }
 
       const participantData = participantDoc.data();
@@ -1727,6 +1727,22 @@
       return { status: "restored" };
     }
 
+    function isTransientRestoreError(error) {
+      const errorText = [error?.code, error?.message, error?.details]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase())
+        .join(" ");
+
+      return Boolean(
+        errorText.includes("unavailable")
+        || errorText.includes("deadline-exceeded")
+        || errorText.includes("deadline exceeded")
+        || errorText.includes("network")
+        || errorText.includes("offline")
+        || errorText.includes("failed to fetch")
+      );
+    }
+
     async function restoreJoinedState() {
       if (!hangoutId || hangoutId === "hangout") {
         return { status: "not-joined" };
@@ -1734,7 +1750,6 @@
 
       const storedStateText = localStorage.getItem(getJoinedStateStorageKey());
       let storedState = null;
-      let attemptedAuthFallback = false;
       let authUser = null;
 
       try {
@@ -1750,7 +1765,7 @@
           }
 
           const restoreResult = await restoreParticipantIdentity(storedState.participantId, storedState.displayName || "");
-          if (restoreResult.status === "retry" && storedState.left) {
+          if (restoreResult.reason === "participant-doc-missing" && storedState.left) {
             currentBrowserParticipantId = storedState.participantId;
             currentBrowserParticipantName = storedState.displayName || "Participant";
             displayNameInput.value = currentBrowserParticipantName;
@@ -1762,7 +1777,6 @@
         }
 
         if (authUser?.uid) {
-          attemptedAuthFallback = true;
           const authRestoreResult = await restoreParticipantIdentity(authUser.uid);
           return authRestoreResult.status === "retry"
             ? { status: "not-joined" }
@@ -1776,7 +1790,12 @@
           message: error?.message,
           details: error?.details
         });
-        return storedStateText || attemptedAuthFallback
+        const hasMatchingStoredMembership = Boolean(
+          storedState?.participantId
+          && authUser?.uid
+          && String(storedState.participantId) === String(authUser.uid)
+        );
+        return hasMatchingStoredMembership && isTransientRestoreError(error)
           ? { status: "retry", reason: "restore-error" }
           : { status: "not-joined" };
       }
