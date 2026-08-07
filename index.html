@@ -1008,7 +1008,7 @@
 
   <script type="module">
     import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getFirestore, doc, getDoc, updateDoc, serverTimestamp, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, serverTimestamp, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
     import { getAuth, signInAnonymously, setPersistence, browserLocalPersistence, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js";
 
@@ -1075,7 +1075,7 @@
     let db = null;
     let currentPreviewData = null;
     let currentOrganizerName = "";
-    let currentOrganizerId = "";
+    let currentOwnerUid = "";
     let currentOrganizerStatus = "private";
     let peopleUnsubscribe = null;
     let hangoutUnsubscribe = null;
@@ -1087,7 +1087,7 @@
     let hangoutActivityIsAuthoritative = false;
     let previewActivityIsAuthoritative = false;
     let currentPeopleEntries = [];
-    let currentBrowserParticipantId = "";
+    let currentMembershipAuthUid = "";
     let currentBrowserParticipantName = "";
     let currentBrowserParticipantStatus = "private";
     let currentBrowserParticipantLeft = false;
@@ -1096,6 +1096,13 @@
     let betaRequestSubmitted = false;
     let pendingStatusUpdate = "";
     let authPersistencePromise = null;
+
+    function logDebug(message, details = undefined) {
+      if (!debugModeEnabled) {
+        return;
+      }
+      console.debug(message, details);
+    }
 
     function getFirebaseApp() {
       const existingApps = getApps();
@@ -1109,7 +1116,7 @@
 
       if (!authPersistencePromise) {
         authPersistencePromise = setPersistence(auth, browserLocalPersistence).catch((error) => {
-          console.warn("[join debug] auth persistence setup failed", {
+          logDebug("Auth persistence setup failed", {
             code: error?.code,
             message: error?.message
           });
@@ -1678,9 +1685,7 @@
 
       const state = {
         hangoutId,
-        participantId: currentBrowserParticipantId,
-        displayName: currentBrowserParticipantName || displayNameInput.value.trim() || "Participant",
-        joinedAt: Date.now()
+        displayName: currentBrowserParticipantName || displayNameInput.value.trim() || "Participant"
       };
 
       localStorage.setItem(getJoinedStateStorageKey(), JSON.stringify(state));
@@ -1693,27 +1698,29 @@
 
       const state = {
         hangoutId,
-        participantId: currentBrowserParticipantId,
         displayName: currentBrowserParticipantName || displayNameInput.value.trim() || "Participant",
-        left: true,
-        leftAt: Date.now()
+        left: true
       };
 
       localStorage.setItem(getJoinedStateStorageKey(), JSON.stringify(state));
     }
 
-    async function restoreParticipantIdentity(participantId, displayName = "") {
-      if (!db || !participantId) {
+    async function restoreParticipantIdentity(authUser, displayName = "") {
+      const membershipAuthUid = authUser?.uid || "";
+      if (!db || !membershipAuthUid) {
         return { status: "not-joined" };
       }
 
-      const participantDoc = await getDoc(doc(db, "hangouts", hangoutId, "participants", participantId));
+      const participantDoc = await getDoc(doc(db, "hangouts", hangoutId, "participants", membershipAuthUid));
       if (!participantDoc.exists()) {
         return { status: "not-joined", reason: "participant-doc-missing" };
       }
 
       const participantData = participantDoc.data();
-      currentBrowserParticipantId = participantId;
+      if (String(participantData?.membershipAuthUid || "") !== String(membershipAuthUid)) {
+        return { status: "not-joined", reason: "canonical-identity-mismatch" };
+      }
+      currentMembershipAuthUid = membershipAuthUid;
       currentBrowserParticipantName = displayName || getPersonName(participantData) || "Participant";
       currentBrowserParticipantStatus = normalizeParticipantStatus(participantData?.status || "private");
       displayNameInput.value = currentBrowserParticipantName;
@@ -1759,14 +1766,10 @@
 
         authUser = await waitForAuthReady();
 
-        if (storedState?.participantId) {
-          if (!authUser?.uid || String(storedState.participantId) !== String(authUser.uid)) {
-            return { status: "not-joined" };
-          }
-
-          const restoreResult = await restoreParticipantIdentity(storedState.participantId, storedState.displayName || "");
+        if (storedState && authUser?.uid) {
+          const restoreResult = await restoreParticipantIdentity(authUser, storedState.displayName || "");
           if (restoreResult.reason === "participant-doc-missing" && storedState.left) {
-            currentBrowserParticipantId = storedState.participantId;
+            currentMembershipAuthUid = authUser.uid;
             currentBrowserParticipantName = storedState.displayName || "Participant";
             displayNameInput.value = currentBrowserParticipantName;
             showLeftState({ saveState: false });
@@ -1777,7 +1780,7 @@
         }
 
         if (authUser?.uid) {
-          const authRestoreResult = await restoreParticipantIdentity(authUser.uid);
+          const authRestoreResult = await restoreParticipantIdentity(authUser);
           return authRestoreResult.status === "retry"
             ? { status: "not-joined" }
             : authRestoreResult;
@@ -1785,16 +1788,12 @@
 
         return { status: "not-joined" };
       } catch (error) {
-        console.error("[join debug] restore joined state error", {
+        logDebug("Joined-state restore failed", {
           code: error?.code,
           message: error?.message,
           details: error?.details
         });
-        const hasMatchingStoredMembership = Boolean(
-          storedState?.participantId
-          && authUser?.uid
-          && String(storedState.participantId) === String(authUser.uid)
-        );
+        const hasMatchingStoredMembership = Boolean(storedState && authUser?.uid);
         return hasMatchingStoredMembership && isTransientRestoreError(error)
           ? { status: "retry", reason: "restore-error" }
           : { status: "not-joined" };
@@ -1835,8 +1834,8 @@
 
     function markCurrentParticipantLeftInMemory() {
       currentPeopleEntries = currentPeopleEntries.map((entry) => {
-        const entryId = entry?.id || entry?.participantId || entry?.uid || entry?.userId || "";
-        if (!currentBrowserParticipantId || String(entryId) !== String(currentBrowserParticipantId)) {
+        const entryId = entry?.id || "";
+        if (!currentMembershipAuthUid || String(entryId) !== String(currentMembershipAuthUid)) {
           return entry;
         }
 
@@ -1880,10 +1879,10 @@
       const seen = new Set();
       const statusWindowOpen = isStatusWindowOpen(currentPreviewData);
       const hostParticipantEntry = currentPeopleEntries.find((entry) => {
-        const entryId = entry?.id || entry?.participantId || entry?.uid || entry?.userId || "";
+        const entryId = entry?.id || "";
         const normalizedName = (entry?.displayName || "").trim().toLowerCase();
         const organizerName = currentOrganizerName.trim().toLowerCase();
-        const matchesId = Boolean(currentOrganizerId && entryId && String(entryId) === String(currentOrganizerId));
+        const matchesId = Boolean(currentOwnerUid && entryId && String(entryId) === String(currentOwnerUid));
         const matchesName = Boolean(organizerName && normalizedName && normalizedName === organizerName);
         const matchesRole = Boolean(entry?.role === "host" || entry?.role === "organizer" || entry?.isOrganizer || entry?.isHost);
         return matchesId || matchesName || matchesRole;
@@ -1891,22 +1890,22 @@
 
       if (hostParticipantEntry) {
         entries.push({
-          id: hostParticipantEntry.id || currentOrganizerId || `organizer:${currentOrganizerName}`,
+          id: hostParticipantEntry.id || currentOwnerUid || `organizer:${currentOrganizerName}`,
           displayName: getPersonName(hostParticipantEntry) || currentOrganizerName || "Host",
           status: statusWindowOpen ? getPersonStatus(hostParticipantEntry) : "Not shared",
           isOrganizer: true,
           roleLabel: "Host"
         });
-        seen.add(hostParticipantEntry.id || currentOrganizerId || `organizer:${currentOrganizerName}`);
+        seen.add(hostParticipantEntry.id || currentOwnerUid || `organizer:${currentOrganizerName}`);
       } else if (currentOrganizerName) {
         entries.push({
-          id: currentOrganizerId || `organizer:${currentOrganizerName}`,
+          id: currentOwnerUid || `organizer:${currentOrganizerName}`,
           displayName: currentOrganizerName,
           status: statusWindowOpen ? getStatusLabel(currentOrganizerStatus) : "Not shared",
           isOrganizer: true,
           roleLabel: "Host"
         });
-        seen.add(currentOrganizerId || `organizer:${currentOrganizerName}`);
+        seen.add(currentOwnerUid || `organizer:${currentOrganizerName}`);
       }
 
       currentPeopleEntries.forEach((entry) => {
@@ -1914,11 +1913,11 @@
           return;
         }
 
-        const entryId = entry?.id || entry?.participantId || entry?.uid || entry?.userId || entry?.displayName || "";
+        const entryId = entry?.id || "";
         const normalizedName = (entry?.displayName || "").trim().toLowerCase();
         const organizerName = currentOrganizerName.trim().toLowerCase();
         const isOrganizerEntry = Boolean(
-          (currentOrganizerId && entryId && String(entryId) === String(currentOrganizerId))
+          (currentOwnerUid && entryId && String(entryId) === String(currentOwnerUid))
           || (organizerName && normalizedName && normalizedName === organizerName)
           || (entry?.role === "host" || entry?.role === "organizer" || entry?.isOrganizer || entry?.isHost)
         );
@@ -1938,7 +1937,7 @@
         entries.push({
           id: entryId || `participant:${entries.length}`,
           displayName: getPersonName(entry),
-          status: statusWindowOpen && pendingStatusUpdate && currentBrowserParticipantId && String(entryId) === String(currentBrowserParticipantId)
+          status: statusWindowOpen && pendingStatusUpdate && currentMembershipAuthUid && String(entryId) === String(currentMembershipAuthUid)
             ? getStatusLabel(pendingStatusUpdate)
             : (statusWindowOpen ? getPersonStatus(entry) : "Not shared"),
           isOrganizer: false,
@@ -1946,8 +1945,8 @@
         });
       });
 
-      if (!currentBrowserParticipantLeft && (currentBrowserParticipantId || currentBrowserParticipantName)) {
-        const browserId = currentBrowserParticipantId || `browser:${currentBrowserParticipantName}`;
+      if (!currentBrowserParticipantLeft && currentMembershipAuthUid) {
+        const browserId = currentMembershipAuthUid;
         if (!seen.has(browserId)) {
           entries.push({
             id: browserId,
@@ -2008,8 +2007,8 @@
           ...docSnapshot.data()
         }));
         const currentParticipantEntry = currentPeopleEntries.find((entry) => (
-          currentBrowserParticipantId
-          && String(entry?.id || entry?.participantId || entry?.uid || entry?.userId || "") === String(currentBrowserParticipantId)
+          currentMembershipAuthUid
+          && String(entry?.id || "") === String(currentMembershipAuthUid)
         ));
         if (currentParticipantEntry) {
           const snapshotStatus = normalizeParticipantStatus(currentParticipantEntry.status || currentParticipantEntry.currentStatus);
@@ -2033,8 +2032,8 @@
         } else if (currentPreviewData?.organizerDisplayName) {
           currentOrganizerName = currentPreviewData.organizerDisplayName;
         }
-        if (hangoutData?.organizerId) {
-          currentOrganizerId = hangoutData.organizerId;
+        if (hangoutData?.ownerUid) {
+          currentOwnerUid = hangoutData.ownerUid;
         }
         if (hangoutData?.organizerStatus || hangoutData?.hostStatus) {
           currentOrganizerStatus = normalizeParticipantStatus(hangoutData.organizerStatus || hangoutData.hostStatus);
@@ -2128,28 +2127,6 @@
       });
     }
 
-    function startLeftStateHangoutListener() {
-      if (!db || !hangoutId || hangoutId === "hangout") {
-        return;
-      }
-
-      if (hangoutUnsubscribe) {
-        hangoutUnsubscribe();
-        hangoutUnsubscribe = null;
-      }
-
-      hangoutUnsubscribe = onSnapshot(doc(db, "hangouts", hangoutId), (snapshot) => {
-        const hangoutData = snapshot.exists() ? snapshot.data() : null;
-        const hangoutStatus = hangoutData?.status || currentPreviewData?.status || "active";
-        if (isUnavailableHangoutStatus(hangoutStatus)) {
-          renderPreview({ ...(currentPreviewData || {}), status: hangoutStatus });
-          return;
-        }
-
-        updateLeftStateRejoinAction();
-      });
-    }
-
     function setJoinControlsVisible(isVisible) {
       joinSection.hidden = !isVisible;
       displayNameInput.disabled = !isVisible;
@@ -2174,10 +2151,6 @@
         if (inviteToken) {
           appUrl.searchParams.set("invite", inviteToken);
         }
-        if (currentBrowserParticipantId) {
-          appUrl.searchParams.set("participantId", currentBrowserParticipantId);
-        }
-
         openButton.hidden = false;
         openButton.setAttribute("href", appUrl.toString());
         openButton.onclick = function (event) {
@@ -2408,7 +2381,7 @@
         ? Math.round((expiresAt.getTime() - startAt.getTime()) / (60 * 1000))
         : null;
 
-      console.debug("Hangout expiration decision", {
+      logDebug("Hangout expiration decision", {
         source: "web-preview",
         reason,
         hidden,
@@ -2584,10 +2557,6 @@
 
       scheduleStatusWindowRefresh(preview);
 
-      if (inviteToken) {
-        startPeopleListeners();
-      }
-
       const canJoin = !isPreviewUnavailableState(preview) && Boolean(inviteToken);
       const previewStatusWindowOpen = isStatusWindowOpen(preview);
       const detailParts = [];
@@ -2634,7 +2603,7 @@
     }
 
     function showJoinedState(options = {}) {
-      const { restoreFromStorage = false, participantData = null, participantId = "" } = options;
+      const { restoreFromStorage = false, participantData = null } = options;
       hideInviteLoading();
       setJoinControlsVisible(false);
       joinedState.hidden = true;
@@ -2647,7 +2616,7 @@
       if (!restoreFromStorage) {
         currentBrowserParticipantName = displayNameInput.value.trim() || "Participant";
         currentBrowserParticipantStatus = "private";
-        currentBrowserParticipantId = participantId || auth?.currentUser?.uid || "";
+        currentMembershipAuthUid = auth?.currentUser?.uid || "";
         saveJoinedState();
       } else if (participantData) {
         currentBrowserParticipantStatus = normalizeParticipantStatus(participantData?.status || currentBrowserParticipantStatus);
@@ -2684,7 +2653,7 @@
     function canRejoinCurrentHangout() {
       return Boolean(
         inviteToken
-        && currentBrowserParticipantId
+        && currentMembershipAuthUid
         && currentPreviewData
         && !isPreviewUnavailableState(currentPreviewData)
       );
@@ -2725,69 +2694,14 @@
       joinMessage.textContent = "";
       clearPeopleSection();
       updateLeftStateRejoinAction();
-      startLeftStateHangoutListener();
-
       if (saveState) {
         saveLeftState();
       }
     }
 
-    function isCallableUnavailable(error) {
-      const errorText = [error?.code, error?.message, error?.details]
-        .filter(Boolean)
-        .map((value) => String(value))
-        .join(" ")
-        .toLowerCase();
-
-      return Boolean(
-        errorText.includes("not-found")
-        || errorText.includes("not found")
-        || errorText.includes("unimplemented")
-      );
-    }
-
-    async function markCurrentParticipantLeftInFirestore() {
-      if (!db || !currentBrowserParticipantId) {
-        return;
-      }
-
-      await updateDoc(doc(db, "hangouts", hangoutId, "participants", currentBrowserParticipantId), {
-        status: "left",
-        left: true,
-        leftAt: serverTimestamp(),
-        isActive: false
-      });
-    }
-
     async function requestLeaveParticipant() {
       const leaveParticipant = httpsCallable(functions, "leaveParticipant");
-
-      try {
-        const result = await leaveParticipant({
-          hangoutId,
-          participantId: currentBrowserParticipantId
-        });
-
-        if (result?.data?.ok) {
-          return;
-        }
-
-        throw new Error("Leave failed");
-      } catch (error) {
-        if (!isCallableUnavailable(error)) {
-          throw error;
-        }
-
-        console.warn("[join debug] leaveParticipant callable unavailable; falling back to updateParticipantStatus", error);
-      }
-
-      const updateParticipantStatus = httpsCallable(functions, "updateParticipantStatus");
-      const result = await updateParticipantStatus({
-        hangoutId,
-        status: "left",
-        left: true,
-        isActive: false
-      });
+      const result = await leaveParticipant({ hangoutId });
 
       if (!result?.data?.ok) {
         throw new Error("Leave failed");
@@ -2808,7 +2722,7 @@
         auth = getAuth(app);
         await configureAuthPersistence();
         functions = getFunctions(app, functionsRegion);
-        console.log("[join debug] functions region configured:", functionsRegion);
+        logDebug("Functions region configured", { region: functionsRegion });
         startPreviewListener();
 
         const previewSnapshot = await getDoc(doc(db, "hangoutPreviews", hangoutId));
@@ -2832,7 +2746,7 @@
         setPreviewUnavailable("We couldn’t load the invite preview right now.");
         return null;
       } catch (error) {
-        console.error("[join debug] preview load error", {
+        logDebug("Preview load failed", {
           code: error?.code,
           message: error?.message,
           details: error?.details
@@ -2870,7 +2784,7 @@
       }
 
       if (!auth || !functions) {
-        console.error("[join debug] join handler unavailable", {
+        logDebug("Join handler unavailable", {
           code: "auth-or-functions-not-ready",
           message: "Auth or functions not initialized",
           details: "auth=" + Boolean(auth) + ", functions=" + Boolean(functions)
@@ -2899,7 +2813,7 @@
           await signInAnonymously(auth);
         }
 
-        console.log("[join debug] auth.currentUser after signInAnonymously:", Boolean(auth.currentUser));
+        logDebug("Anonymous Auth ready for join", { authenticated: Boolean(auth.currentUser) });
         displayNameInput.value = displayName;
 
         const joinHangout = httpsCallable(functions, "joinHangout");
@@ -2910,13 +2824,16 @@
         });
 
         if (result?.data?.ok) {
-          showJoinedState({ participantId: result?.data?.participantId || "" });
+          if (!auth.currentUser?.uid || result?.data?.participantId !== auth.currentUser.uid) {
+            throw new Error("Canonical membership identity mismatch");
+          }
+          showJoinedState();
           focusElement(leaveButton);
         } else {
           throw new Error("Join failed");
         }
       } catch (error) {
-        console.error("[join debug] joinHangout error", {
+        logDebug("Join callable failed", {
           code: error?.code,
           message: error?.message,
           details: error?.details
@@ -2938,7 +2855,7 @@
     }
 
     leaveButton.addEventListener("click", async function () {
-      if (!auth || !functions || !hangoutId || !currentBrowserParticipantId) {
+      if (!auth || !functions || !hangoutId || !currentMembershipAuthUid) {
         setStatusMessage("Couldn’t leave this hangout right now.", true);
         return;
       }
@@ -2949,16 +2866,9 @@
 
       try {
         await requestLeaveParticipant();
-
-        try {
-          await markCurrentParticipantLeftInFirestore();
-        } catch (error) {
-          console.warn("[join debug] explicit leave marker update failed", error);
-        }
-
         showLeftState();
       } catch (error) {
-        console.error("[join debug] leave hangout error", error);
+        logDebug("Leave callable failed", { code: error?.code, message: error?.message });
         setStatusMessage("Couldn’t leave this hangout right now.", true);
       } finally {
         leaveButton.disabled = false;
@@ -3038,7 +2948,7 @@
             throw new Error("Status update failed");
           }
         } catch (error) {
-          console.error("[join debug] updateParticipantStatus error", {
+          logDebug("Status callable failed", {
             code: error?.code,
             message: error?.message,
             details: error?.details
