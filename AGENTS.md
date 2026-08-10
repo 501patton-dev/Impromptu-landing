@@ -113,7 +113,15 @@ The user generally copies prompts verbatim and prefers Codex/ChatGPT to interpre
 - Preserve the simple participant experience.
 - Do not silently modify Firebase/backend contracts from this workspace.
 
-For substantial results (roughly >40 meaningful lines) or cross-session/cross-workbench handoffs, create a concise Markdown handoff. Reusable executable code belongs in source/script files.
+### Codex Result / Handoff Format
+
+Use chat for short results only.
+
+- If the result is roughly 40 meaningful lines or fewer, report it directly in chat. The user may provide a screenshot of that result back to ChatGPT.
+- If the result would exceed roughly 40 meaningful lines, do not dump the full result into chat. Create a concise Markdown (`.md`) handoff file instead and return only a 1–3 sentence summary, the handoff file path, and the single recommended next action.
+- Also use a Markdown handoff when information must cross a VS Code window, ChatGPT workbench, repository, or future session, even if it is somewhat shorter.
+- A handoff is not a transcript. Distill it to the information another AI/developer needs: findings, decisions, relevant files/contracts, tests, deployment state, risks, unresolved questions, and next action.
+- Keep reusable or executable code in its proper source/script file rather than embedding it in the Markdown handoff.
 
 ## Git
 
