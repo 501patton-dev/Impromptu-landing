@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Loading your invite</title>
+  <title>Loading your B16 · Build16</title>
 
   <style>
     :root {
@@ -108,10 +108,18 @@
     .brand-top {
       margin-bottom: 58px;
       color: rgba(244, 242, 255, 0.68);
-      font-size: 15px;
-      font-weight: 500;
-      letter-spacing: 0.42em;
+      font-size: 28px;
+      font-stretch: condensed;
+      font-weight: 650;
+      letter-spacing: -0.055em;
+      line-height: 1;
       text-align: center;
+      transform: scaleX(0.84);
+      transform-origin: center;
+    }
+
+    .brand-top strong {
+      font-weight: 800;
     }
 
     .invite-card {
@@ -805,11 +813,11 @@
 
 <body>
   <main class="page">
-    <section class="shell" aria-label="Impromptu invite landing page">
-      <div class="brand-top">IMPROMPTU</div>
+    <section class="shell" aria-label="Build16 B16 invite page">
+      <div class="brand-top" aria-label="Build16"><span aria-hidden="true">Build<strong>16</strong></span></div>
 
       <div class="invite-card">
-        <h1 id="previewTitle">Loading your invite&hellip;</h1>
+        <h1 id="previewTitle">Loading your B16&hellip;</h1>
 
         <p class="subtitle" id="previewSubtitle">You&rsquo;ll be able to join here in your browser.</p>
 
@@ -868,7 +876,7 @@
 
         <div class="joined-state" id="joinedState" hidden>
           <p class="join-message success" id="joinedStateText">You’ve joined.</p>
-          <button class="button primary" id="rejoinButton" type="button" hidden>Rejoin Hangout</button>
+          <button class="button primary" id="rejoinButton" type="button" hidden>Rejoin B16</button>
         </div>
 
         <section class="people-section" id="peopleSection" hidden>
@@ -885,7 +893,7 @@
             <button class="status-button" type="button" data-status="arrived">I arrived</button>
             <button class="status-button" type="button" data-status="private">Not shared</button>
           </div>
-          <button class="button tertiary leave-button" id="leaveButton" type="button">Leave hangout</button>
+          <button class="button tertiary leave-button" id="leaveButton" type="button">Leave B16</button>
           <p class="status-message" id="statusMessage" role="status"></p>
         </div>
 
@@ -907,7 +915,7 @@
             />
           </svg>
 
-          <span>Open in Impromptu</span>
+          <span>Open in Build16</span>
         </a>
 
         <div class="note" id="inviteNote" role="status" hidden>
@@ -934,7 +942,7 @@
           </svg>
 
           <div id="noteContent">
-            If the app doesn&rsquo;t open, make sure Impromptu is installed on your device.
+            If the app doesn&rsquo;t open, make sure Build16 is installed on your device.
           </div>
         </div>
 
@@ -985,7 +993,7 @@
               id="betaNoteInput"
               name="note"
               maxlength="500"
-              placeholder="What would you use Impromptu for?"
+              placeholder="What would you use Build16 for?"
             ></textarea>
           </div>
 
@@ -1267,8 +1275,8 @@
     }
 
     function showInviteLoading() {
-      document.title = "Loading your invite";
-      previewTitle.textContent = "Loading your invite…";
+      document.title = "Loading your B16 · Build16";
+      previewTitle.textContent = "Loading your B16…";
       previewSubtitle.textContent = "You’ll be able to join here in your browser.";
       previewDetails.hidden = true;
       inviteLoading.hidden = false;
@@ -2147,7 +2155,7 @@
 
     function setOpenAppLink() {
       if (hangoutId && hangoutId !== "hangout") {
-        const appUrl = new URL(`impromptu://hangout/${encodeURIComponent(hangoutId)}`);
+        const appUrl = new URL(`build16://hangout/${encodeURIComponent(hangoutId)}`);
         if (inviteToken) {
           appUrl.searchParams.set("invite", inviteToken);
         }
@@ -2324,7 +2332,7 @@
         return activityInvitePhrase;
       }
 
-      return "to a hangout";
+      return "to a B16";
     }
 
     function getInviteTitle(preview) {
@@ -2344,15 +2352,15 @@
         : getInviteTitle(preview);
 
       previewTitle.textContent = title;
-      document.title = title;
+      document.title = `${title} · Build16`;
     }
 
     function getJoinedTitle(hostName, activityText) {
       if (!hostName) {
-        return "You’ve joined this hangout";
+        return "You’ve joined this B16";
       }
 
-      if (!activityText || activityText === "this hangout") {
+      if (!activityText || activityText === "this hangout" || activityText === "this B16") {
         return `You’ve joined ${hostName}`;
       }
 
@@ -2450,7 +2458,7 @@
       clearStatusWindowRefresh();
       hideInviteLoading();
       previewTitle.textContent = "The invite preview is unavailable.";
-      previewSubtitle.textContent = "Open Impromptu to continue.";
+      previewSubtitle.textContent = "Open Build16 to continue.";
       previewDetails.hidden = true;
       mapsButton.hidden = true;
       openButton.hidden = true;
@@ -2497,7 +2505,7 @@
 
       previewTitle.textContent = title;
       previewSubtitle.textContent = "";
-      document.title = title;
+      document.title = `${title} · Build16`;
       currentPreviewData = preview;
       setOpenAppLink();
       if (preview.organizerDisplayName) {
@@ -2519,7 +2527,7 @@
 
       if (isPreviewEnded(preview)) {
         clearStatusWindowRefresh();
-        previewTitle.textContent = "This hangout has ended.";
+        previewTitle.textContent = "This B16 has ended.";
         previewSubtitle.textContent = "This invite is no longer active.";
         previewDetails.hidden = true;
         mapsButton.hidden = true;
@@ -2532,7 +2540,7 @@
         clearPeopleSection();
         stopPeopleListeners();
         clearJoinedState();
-        setNote("This hangout has ended.");
+        setNote("This B16 has ended.");
         return;
       }
 
@@ -2637,7 +2645,7 @@
 
       previewTitle.textContent = joinedTitle;
       previewSubtitle.textContent = "";
-      document.title = joinedTitle;
+      document.title = `${joinedTitle} · Build16`;
       updatePreviewDetailsAndMaps(currentPreviewData);
 
       setStatusControlsAvailable(statusWindowOpen);
@@ -2663,12 +2671,12 @@
       const canRejoin = canRejoinCurrentHangout();
       joinedState.hidden = false;
       joinedStateText.textContent = canRejoin
-        ? "You can rejoin while this hangout is active."
-        : "This hangout is no longer available to rejoin.";
+        ? "You can rejoin while this B16 is active."
+        : "This B16 is no longer available to rejoin.";
       joinedStateText.className = "join-message";
       rejoinButton.hidden = !canRejoin;
       rejoinButton.disabled = !canRejoin;
-      rejoinButton.textContent = "Rejoin Hangout";
+      rejoinButton.textContent = "Rejoin B16";
     }
 
     function showLeftState(options = {}) {
@@ -2687,7 +2695,7 @@
       openButton.hidden = true;
       inviteNote.hidden = true;
       renderHostNote(null);
-      previewTitle.textContent = "You left this hangout.";
+      previewTitle.textContent = "You left this B16.";
       previewSubtitle.textContent = "Your status is no longer visible.";
       previewDetails.hidden = true;
       setStatusMessage("");
@@ -2802,10 +2810,10 @@
       actionButton.disabled = true;
       actionButton.textContent = rejoin ? "Rejoining..." : "Joining...";
       if (rejoin) {
-        joinedStateText.textContent = "Rejoining this hangout...";
+        joinedStateText.textContent = "Rejoining this B16...";
         joinedStateText.className = "join-message";
       } else {
-        setJoinMessage("Joining this hangout...");
+        setJoinMessage("Joining this B16...");
       }
 
       try {
@@ -2841,38 +2849,38 @@
 
         if (rejoin) {
           updateLeftStateRejoinAction();
-          joinedStateText.textContent = "Couldn’t rejoin this hangout. The invite may have expired or already been used.";
+          joinedStateText.textContent = "Couldn’t rejoin this B16. The invite may have expired or already been used.";
           joinedStateText.className = "join-message error";
           focusElement(rejoinButton);
         } else {
-          setJoinMessage("Couldn’t join this hangout. The invite may have expired or already been used.", true);
+          setJoinMessage("Couldn’t join this B16. The invite may have expired or already been used.", true);
         }
         setDebugStatus(error?.code || "join-failed", error?.message || "Join attempt failed.");
       } finally {
         actionButton.disabled = false;
-        actionButton.textContent = rejoin ? "Rejoin Hangout" : "Join";
+        actionButton.textContent = rejoin ? "Rejoin B16" : "Join";
       }
     }
 
     leaveButton.addEventListener("click", async function () {
       if (!auth || !functions || !hangoutId || !currentMembershipAuthUid) {
-        setStatusMessage("Couldn’t leave this hangout right now.", true);
+        setStatusMessage("Couldn’t leave this B16 right now.", true);
         return;
       }
 
       leaveButton.disabled = true;
       leaveButton.textContent = "Leaving...";
-      setStatusMessage("Leaving this hangout...");
+      setStatusMessage("Leaving this B16...");
 
       try {
         await requestLeaveParticipant();
         showLeftState();
       } catch (error) {
         logDebug("Leave callable failed", { code: error?.code, message: error?.message });
-        setStatusMessage("Couldn’t leave this hangout right now.", true);
+        setStatusMessage("Couldn’t leave this B16 right now.", true);
       } finally {
         leaveButton.disabled = false;
-        leaveButton.textContent = "Leave hangout";
+        leaveButton.textContent = "Leave B16";
       }
     });
 
